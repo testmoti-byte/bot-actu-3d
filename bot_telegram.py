@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURATION (On utilisera des "Secrets" GitHub plus tard pour la sécurité) ---
 TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
-CHAT_ID = "6773491313"
+CHAT_ID = "6773491313" "7776912126"
 
 SOURCES = {
     "3Dnatives (FR)": "https://www.3dnatives.com/feed/",
@@ -47,4 +47,5 @@ def compiler_actus_3d():
         envoyer_telegram("☕ Rien de neuf dans le monde de la 3D ces dernières 24h, David.")
 
 if __name__ == "__main__":
+
     compiler_actus_3d()
