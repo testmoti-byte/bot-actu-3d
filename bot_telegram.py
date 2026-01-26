@@ -4,7 +4,18 @@ from datetime import datetime, timedelta
 
 # --- CONFIGURATION (On utilisera des "Secrets" GitHub plus tard pour la sécurité) ---
 TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
-CHAT_ID = "6773491313" "7776912126"
+
+# On crée une liste avec ton ID et celui de Léa
+LISTE_ID = ["6773491313", "7776912126"] 
+
+def envoyer_telegram(message):
+    for chat_id in LISTE_ID:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+        try:
+            requests.post(url, data=payload)
+        except Exception as e:
+            print(f"Erreur d'envoi pour {chat_id}: {e}")TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
 
 SOURCES = {
     "3Dnatives (FR)": "https://www.3dnatives.com/feed/",
@@ -49,3 +60,4 @@ def compiler_actus_3d():
 if __name__ == "__main__":
 
     compiler_actus_3d()
+
