@@ -7,7 +7,7 @@ TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
 
 # Ajoute l'ID de Léa entre les guillemets après la virgule
 # Exemple : LISTE_ID = ["6773491313", "123456789"]
-LISTE_ID = ["6773491313"] 
+LISTE_ID = ["6773491313", "7776912126"] 
 
 SOURCES = {
     "3Dnatives (FR)": "https://www.3dnatives.com/feed/",
@@ -51,3 +51,4 @@ def compiler_actus_3d():
 
 if __name__ == "__main__":
     compiler_actus_3d()
+
