@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
 
 # Ajoute l'ID de Léa ici dès que tu l'as (ex: "12345678")
-LISTE_ID = ["6773491313","7776912126"] 
+LISTE_ID = ["6773491313", "7776912126"]
 
 def envoyer_telegram(message):
     for chat_id in LISTE_ID:
@@ -62,5 +62,6 @@ def compiler_actus_3d():
 if __name__ == "__main__":
 
     compiler_actus_3d()
+
 
 
