@@ -2,11 +2,11 @@ import requests
 import feedparser
 from datetime import datetime, timedelta
 
-# --- CONFIGURATION (On utilisera des "Secrets" GitHub plus tard pour la sécurité) ---
+# --- CONFIG ---
 TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
 
-# On crée une liste avec ton ID et celui de Léa
-LISTE_ID = ["6773491313", "7776912126"] 
+# Ajoute l'ID de Léa ici dès que tu l'as (ex: "12345678")
+LISTE_ID = ["6773491313","7776912126"] 
 
 def envoyer_telegram(message):
     for chat_id in LISTE_ID:
@@ -15,7 +15,9 @@ def envoyer_telegram(message):
         try:
             requests.post(url, data=payload)
         except Exception as e:
-            print(f"Erreur d'envoi pour {chat_id}: {e}")TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
+            print(f"Erreur d'envoi pour {chat_id}: {e}")
+
+# --- LE RESTE DU CODE (SOURCES, COMPILER_ACTUS_3D, etc.) ---
 
 SOURCES = {
     "3Dnatives (FR)": "https://www.3dnatives.com/feed/",
@@ -60,4 +62,5 @@ def compiler_actus_3d():
 if __name__ == "__main__":
 
     compiler_actus_3d()
+
 
