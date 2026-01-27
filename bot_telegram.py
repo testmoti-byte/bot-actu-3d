@@ -9,11 +9,14 @@ TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
 # Exemple : LISTE_ID = ["6773491313", "123456789"]
 LISTE_ID = ["6773491313", "7776912126"] 
 
-SOURCES = {
+ SOURCES = {
     "3Dnatives (FR)": "https://www.3dnatives.com/feed/",
+    "Thingiverse": "https://www.thingiverse.com/rss/newest",
+    "Instructables": "https://www.instructables.com/rss/workshop/",
+    "Hackaday": "https://hackaday.com/blog/category/3d-printing/feed/",
     "All3DP": "https://all3dp.com/feed/",
-    "3D Printing Industry": "https://3dprintingindustry.com/feed/",
     "Cults3D": "https://cults3d.com/fr/flux-de-conception.rss"
+}
 }
 
 def envoyer_telegram(message):
@@ -51,4 +54,5 @@ def compiler_actus_3d():
 
 if __name__ == "__main__":
     compiler_actus_3d()
+
 
