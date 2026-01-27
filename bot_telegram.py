@@ -60,14 +60,14 @@ def compiler_actus_3d():
         try:
             flux = feedparser.parse(url_rss)
             for article in flux.entries[:3]:
-                # On essaie de lire la date de l'article
                 date_tuple = article.published_parsed if hasattr(article, 'published_parsed') else article.updated_parsed
                 if date_tuple:
                     date_article = datetime(*date_tuple[:6])
                     if date_article > il_y_a_24h:
                         trouve = True
                         message_global += f"📍 *{nom_site}*\n"
-                        message_global += f"👉 {article.title}\n"
+                        # ICI ON UTILISE LA TRADUCTION
+                        message_global += f"👉 {traduire(article.title)}\n"
                         message_global += f"[Lire l'article]({article.link})\n\n"
         except:
             continue
@@ -75,9 +75,7 @@ def compiler_actus_3d():
     if trouve:
         envoyer_telegram(message_global)
     else:
-        # Message de confirmation pour vous deux
         envoyer_telegram("☕ Rien de nouveau sur la planète 3D ce matin, David et Léa.")
 
 if __name__ == "__main__":
     compiler_actus_3d()
-
