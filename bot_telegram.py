@@ -10,9 +10,11 @@ LISTE_ID = ["6773491313", "7776912126"]
 
 SOURCES = {
     "3Dnatives (FR)": "https://www.3dnatives.com/feed/",
+    "3DPrint.com (USA)": "https://3dprint.com/feed/",
     "Thingiverse": "https://www.thingiverse.com/rss/newest",
     "Instructables": "https://www.instructables.com/rss/workshop/",
     "Hackaday": "https://hackaday.com/blog/category/3d-printing/feed/",
+    "Engineering.com": "https://www.engineering.com/DesktopModules/Services/API/News/GetRss?category=Design%20Software",
     "All3DP": "https://all3dp.com/feed/",
     "Cults3D": "https://cults3d.com/fr/flux-de-conception.rss"
 }
@@ -54,6 +56,7 @@ def compiler_actus_3d():
 
 if __name__ == "__main__":
     compiler_actus_3d()
+
 
 
 
