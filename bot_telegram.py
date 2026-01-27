@@ -1,6 +1,14 @@
 import requests
 import feedparser
 from datetime import datetime, timedelta
+from deep_translator import GoogleTranslator
+
+def traduire(texte):
+    try:
+        # Traduit n'importe quelle langue vers le Français
+        return GoogleTranslator(source='auto', target='fr').translate(texte)
+    except:
+        return texte # En cas d'erreur, garde le texte original
 
 # --- CONFIGURATION ---
 TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
@@ -9,14 +17,29 @@ TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
 LISTE_ID = ["6773491313", "7776912126"]
 
 SOURCES = {
+    # --- FRANCE ---
     "3Dnatives (FR)": "https://www.3dnatives.com/feed/",
+    "Cults3D (FR)": "https://cults3d.com/fr/flux-de-conception.rss",
+    
+    # --- CHINE & ASIE ---
     "Bambu Lab (Chine)": "https://blog.bambulab.com/feed/",
-    "3DToday (Russie)": "https://3dtoday.ru/news/rss",
+    "Creality (Chine)": "https://www.creality.com/blog/rss",
+    "Seeed Studio (Hardware)": "https://www.seeedstudio.com/blog/feed/",
+    
+    # --- USA & INTERNATIONAL ---
     "3DPrint.com (USA)": "https://3dprint.com/feed/",
-    "Thingiverse (Mondial)": "https://www.thingiverse.com/rss/newest",
-    "Instructables (Prototypage)": "https://www.instructables.com/rss/workshop/",
-    "Seeed Studio (Hardware Chine)": "https://www.seeedstudio.com/blog/feed/",
-    "All3DP": "https://all3dp.com/feed/"
+    "All3DP": "https://all3dp.com/feed/",
+    "Printables (Prusa)": "https://blog.prusa3d.com/feed/",
+    "Tom's Hardware (3D)": "https://www.tomshardware.com/rss/3d-printing",
+    
+    # --- PROTOTYPAGE & MAKER ---
+    "Thingiverse": "https://www.thingiverse.com/rss/newest",
+    "Instructables": "https://www.instructables.com/rss/workshop/",
+    "Hackster.io": "https://www.hackster.io/feed",
+    "Hackaday": "https://hackaday.com/blog/category/3d-printing/feed/",
+    
+    # --- RUSSIE ---
+    "3DToday (Russie)": "https://3dtoday.ru/news/rss"
 }
 
 def envoyer_telegram(message):
@@ -57,3 +80,4 @@ def compiler_actus_3d():
 
 if __name__ == "__main__":
     compiler_actus_3d()
+
