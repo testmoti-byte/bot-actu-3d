@@ -1,14 +1,18 @@
 import requests
 import feedparser
 import sys
+import google.generativeai as genai
 from datetime import datetime, timedelta
-from deep_translator import GoogleTranslator
 
 # --- CONFIGURATION ---
 TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
 LISTE_ID = ["6773491313", "7776912126"]
+GEMINI_API_KEY = "AIzaSyBqvv85GfwkdYnTHV-lMnOnCUXBm7ZJbBA"
 
-# Correction : Ajout des virgules manquantes et suppression des doublons
+# Configuration de l'IA Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
 SOURCES_NEWS = [
     "https://blog.bambulab.com/feed/",
     "https://www.creality.com/blog/rss",
@@ -48,54 +52,47 @@ SOURCES_YOUTUBE = [
     "https://www.youtube.com/feeds/videos.xml?channel_id=UCbv2mDrNJne8Z_v_6TzS3XQ"  # 3D Printing Pro
 ]
 
-def traduire(texte):
+def generer_resume_lea(titre_article):
+    prompt = f"""Tu es Léa, une experte en impression 3D et personnage de BD. 
+    Résume cet article en une phrase courte et dynamique pour David. 
+    Sois sympa et passionnée. Article : {titre_article}"""
     try:
-        return GoogleTranslator(source='auto', target='fr').translate(texte)
-    except: return texte
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except:
+        return f"Hé David ! J'ai déniché ça pour toi : {titre_article}"
 
 def envoyer_telegram(message):
     for chat_id in LISTE_ID:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {
-            "chat_id": chat_id, 
-            "text": message, 
-            "parse_mode": "Markdown", 
-            "disable_web_page_preview": True
-        }
-        try:
-            requests.post(url, data=payload, timeout=10)
-        except Exception as e:
-            print(f"Erreur d'envoi pour {chat_id}: {e}")
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown", "disable_web_page_preview": True}
+        requests.post(url, data=payload)
 
-def compiler(urls, titre):
-    message = f"🤖 *{titre}*\n━━━━━━━━━━━━━━━\n\n"
+def compiler(urls, titre_journal):
+    message_final = f"🤖 *{titre_journal}*\n━━━━━━━━━━━━━━━\n\n"
     il_y_a_24h = datetime.now() - timedelta(hours=24)
     trouve = False
     
     for url in urls:
         try:
             flux = feedparser.parse(url)
-            # Récupération propre du nom de la source
-            nom = flux.feed.title if 'title' in flux.feed else "Source"
-            nom = nom.replace(" - YouTube", "")
-            
-            for art in flux.entries[:2]:
+            nom_source = flux.feed.title.replace(" - YouTube", "") if 'title' in flux.feed else "Source"
+            for art in flux.entries[:1]: # On prend le dernier de chaque source
                 date = art.get('published_parsed') or art.get('updated_parsed')
                 if date and datetime(*date[:6]) > il_y_a_24h:
-                    message += f"📍 *{nom}*\n👉 {traduire(art.title)}\n🔗 [Lien]({art.link})\n\n"
+                    resume = generer_resume_lea(art.title)
+                    message_final += f"📍 *{nom_source}*\n💬 {resume}\n🔗 [Lien]({art.link})\n\n"
                     trouve = True
         except: continue
         
     if trouve:
-        envoyer_telegram(message)
+        envoyer_telegram(message_final)
     else:
-        envoyer_telegram(f"☕ Rien de neuf pour le {titre.lower()}, David.")
+        envoyer_telegram(f"☕ Rien de neuf sous le soleil de la 3D ce coup-ci, David !")
 
 if __name__ == "__main__":
-    # Récupération de l'argument (matin ou soir)
     mode = sys.argv[1] if len(sys.argv) > 1 else "matin"
-    
     if mode == "matin":
-        compiler(SOURCES_NEWS, "JOURNAL DU MATIN ☀️")
+        compiler(SOURCES_NEWS, "LE BRIEF DE LÉA ☀️")
     else:
-        compiler(SOURCES_YOUTUBE, "JOURNAL DU SOIR 🌙")
+        compiler(SOURCES_YOUTUBE, "LA VEILLE VIDÉO DE LÉA 🌙")
