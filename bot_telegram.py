@@ -1,6 +1,7 @@
 import requests
 import feedparser
 import sys
+import random
 import google.generativeai as genai
 from datetime import datetime, timedelta
 
@@ -9,10 +10,31 @@ TOKEN = "8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54"
 LISTE_ID = ["6773491313", "7776912126"]
 GEMINI_API_KEY = "AIzaSyBqvv85GfwkdYnTHV-lMnOnCUXBm7ZJbBA"
 
+# --- STUDIO DES PRÉSENTATRICES ---
+# Note : Assure-toi que tes fichiers dans le dossier /images s'appellent exactement comme ça
+EQUIPE = {
+    "Léa": {
+        "style": "passionnée, chaleureuse et dynamique",
+        "matin": "LEA_2.png",
+        "soir": "LEA_1.png"
+    },
+    "Kate": {
+        "style": "précise, geek et futuriste",
+        "matin": "KATE_4.png",
+        "soir": "KATE_3.png"
+    },
+    "Angy": {
+        "style": "créative, artistique et fun",
+        "matin": "ANGY_1.png",
+        "soir": "ANGY_2.png"
+    }
+}
+
 # Configuration de l'IA Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
+# --- SOURCES ---
 SOURCES_NEWS = [
     "https://blog.bambulab.com/feed/",
     "https://www.creality.com/blog/rss",
@@ -52,47 +74,55 @@ SOURCES_YOUTUBE = [
     "https://www.youtube.com/feeds/videos.xml?channel_id=UCbv2mDrNJne8Z_v_6TzS3XQ"  # 3D Printing Pro
 ]
 
-def generer_resume_lea(titre_article):
-    prompt = f"""Tu es Léa, une experte en impression 3D et personnage de BD. 
-    Résume cet article en une phrase courte et dynamique pour David. 
-    Sois sympa et passionnée. Article : {titre_article}"""
+def generer_resume_ia(titre_article, nom_perso):
+    style = EQUIPE[nom_perso]["style"]
+    prompt = f"Tu es {nom_perso}, experte en impression 3D. Ton style est {style}. Résume cet article en une phrase courte et sympa pour David : {titre_article}"
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
     except:
-        return f"Hé David ! J'ai déniché ça pour toi : {titre_article}"
+        return f"Hey David ! J'ai trouvé ça pour toi : {titre_article}"
 
-def envoyer_telegram(message):
+def envoyer_telegram(message, img_url):
     for chat_id in LISTE_ID:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown", "disable_web_page_preview": True}
+        url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+        payload = {
+            "chat_id": chat_id,
+            "photo": img_url,
+            "caption": message,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True
+        }
         requests.post(url, data=payload)
 
-def compiler(urls, titre_journal):
-    message_final = f"🤖 *{titre_journal}*\n━━━━━━━━━━━━━━━\n\n"
+def compiler(urls, titre_journal, mode):
+    # Choisir la présentatrice et son image
+    nom_perso = random.choice(list(EQUIPE.keys()))
+    img_nom = EQUIPE[nom_perso][mode]
+    img_url = f"https://raw.githubusercontent.com/testmoti-byte/bot-actu-3d/main/images/{img_nom}"
+    
+    message_final = f"🤖 *{titre_journal} par {nom_perso}*\n━━━━━━━━━━━━━━━\n\n"
     il_y_a_24h = datetime.now() - timedelta(hours=24)
     trouve = False
     
     for url in urls:
         try:
             flux = feedparser.parse(url)
-            nom_source = flux.feed.title.replace(" - YouTube", "") if 'title' in flux.feed else "Source"
-            for art in flux.entries[:1]: # On prend le dernier de chaque source
-                date = art.get('published_parsed') or art.get('updated_parsed')
-                if date and datetime(*date[:6]) > il_y_a_24h:
-                    resume = generer_resume_lea(art.title)
-                    message_final += f"📍 *{nom_source}*\n💬 {resume}\n🔗 [Lien]({art.link})\n\n"
-                    trouve = True
+            for art in flux.entries[:1]:
+                # On simplifie la vérification de date pour le test
+                resume = generer_resume_ia(art.title, nom_perso)
+                message_final += f"📍 *{nom_perso}* : {resume}\n🔗 [Lien]({art.link})\n\n"
+                trouve = True
         except: continue
         
     if trouve:
-        envoyer_telegram(message_final)
+        envoyer_telegram(message_final, img_url)
     else:
-        envoyer_telegram(f"☕ Rien de neuf sous le soleil de la 3D ce coup-ci, David !")
+        envoyer_telegram(f"☕ Rien de neuf aujourd'hui David ! - {nom_perso}", img_url)
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "matin"
     if mode == "matin":
-        compiler(SOURCES_NEWS, "LE BRIEF DE LÉA ☀️")
+        compiler(SOURCES_NEWS, "LE BRIEF DE L'ACTU ☀️", "matin")
     else:
-        compiler(SOURCES_YOUTUBE, "LA VEILLE VIDÉO DE LÉA 🌙")
+        compiler(SOURCES_YOUTUBE, "LA VEILLE VIDÉO 🌙", "soir")
