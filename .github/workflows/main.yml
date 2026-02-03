@@ -1,8 +1,10 @@
-name: Envoi Actu 3D Matin
+name: Journal de Léa 🤖
+
 on:
   schedule:
-    - cron: '0 8 * * *'  # 08:00 UTC = 09:00 heure française
-  workflow_dispatch:      # Permet de le lancer à la main pour tester
+    - cron: '0 7 * * *'  # Se lance à 8h00 (Heure France)
+    - cron: '0 19 * * *' # Se lance à 20h00 (Heure France)
+  workflow_dispatch:      # Permet de lancer le bot manuellement pour tester
 
 jobs:
   build:
@@ -10,11 +12,20 @@ jobs:
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v3
+
       - name: Installer Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
       - name: Installer les outils
-        run: pip install -r requirements.txt
+        run: pip install requests feedparser deep-translator
+
       - name: Lancer le bot
-        run: python bot_telegram.py
+        run: |
+          if [ "${{ github.event.schedule }}" == "0 7 * * *" ]; then
+            python bot_telegram.py matin
+          else
+            # Si lancé manuellement ou à 20h, on envoie le soir
+            python bot_telegram.py soir
+          fi
