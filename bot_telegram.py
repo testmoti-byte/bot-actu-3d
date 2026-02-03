@@ -37,22 +37,27 @@ def envoyer_telegram(message, img_url):
         # On remplace les espaces par %20 pour que l'URL soit valide
         img_url_propre = img_url.replace(" ", "%20")
         payload = {"chat_id": chat_id, "photo": img_url_propre, "caption": message, "parse_mode": "Markdown"}
-        requests.post(url, data=payload)
+        r = requests.post(url, data=payload)
+        print(f"ID {chat_id} - Statut: {r.status_code}")
 
 def compiler():
     nom_perso = random.choice(list(EQUIPE.keys()))
     img_nom = EQUIPE[nom_perso]["matin"]
-    # Lien vers ton nouveau dossier /images/
+    # Lien vers ton dossier images
     img_url = f"https://raw.githubusercontent.com/testmoti-byte/bot-actu-3d/main/images/{img_nom}"
     
-    # Test sur Bambu Lab
+    # Test forcé sur Bambu Lab pour valider l'envoi
     flux = feedparser.parse("https://blog.bambulab.com/feed/")
     if flux.entries:
         art = flux.entries[0]
         prompt = f"Tu es {nom_perso}. Résume en une phrase courte pour David : {art.title}"
-        resume = model.generate_content(prompt).text.strip()
+        try:
+            response = model.generate_content(prompt)
+            resume = response.text.strip()
+        except:
+            resume = f"Regarde ça David : {art.title}"
         
-        message = f"🚀 *ACTU 3D : {nom_perso}*\n\n💬 {resume}\n🔗 [Lien]({art.link})"
+        message = f"🚀 *STUDIO ACTU 3D*\n\nPrésentatrice : *{nom_perso}*\n💬 {resume}\n🔗 [Voir l'article]({art.link})"
         envoyer_telegram(message, img_url)
 
 if __name__ == "__main__":
