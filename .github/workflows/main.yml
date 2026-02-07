@@ -1,7 +1,7 @@
 name: JT NEWS 3D
 on:
   schedule:
-    - cron: '0 */8 * * *' # Se lance toutes les 4 heures
+    - cron: '0 18 * * *'  # Se lance tous les jours à 20h00 UTC
   workflow_dispatch:      # Permet de le lancer manuellement (bouton)
 
 jobs:
