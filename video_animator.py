@@ -3,46 +3,54 @@ import cv2
 import numpy as np
 from pathlib import Path
 from moviepy.editor import ImageClip, CompositeVideoClip, AudioFileClip
+# On retire TextClip qui fait planter GitHub
 
-# --- CONFIG ---
-VIDEO_WIDTH = 1080
-VIDEO_HEIGHT = 1920
-FPS = 24
-
-BASE_DIR = Path(__file__).parent
-OUTPUT_DIR = BASE_DIR / "output"
+OUTPUT_DIR = Path("videos")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-def generer_video_animateur(texte, avatar_path, output_path):
-    """Version simplifiée pour valider le test GitHub"""
-    print(f"🎬 Création vidéo pour l'avatar : {avatar_path}")
+def extraire_chroma_key(image_path):
+    img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+    if img is None: return None
+    # Si l'image n'a pas d'alpha, on en crée un
+    if img.shape[2] == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+    return img
+
+def creer_video_article(article: dict, angie_path: str) -> str:
+    output_path = OUTPUT_DIR / f"news_{hash(article['title']) % 1000}.mp4"
+    duree = 5.0 # Durée fixe pour le test GitHub
     
     try:
-        if not os.path.exists(avatar_path):
-            print(f"⚠️ Image manquante : {avatar_path}")
-            return False
-
-        # 1. Création d'un fond simple (Bleu nuit)
-        fond = np.zeros((VIDEO_HEIGHT, VIDEO_WIDTH, 3), dtype=np.uint8)
-        fond[:] = [50, 15, 30] # BGR
-        fond_path = "temp_fond.png"
+        # 1. Fond dégradé OpenCV
+        fond = np.zeros((1920, 1080, 3), dtype=np.uint8)
+        fond[:, :] = [100, 50, 0] # Bleu foncé
+        
+        # 2. Ajout du titre directement sur l'image (Remplace TextClip)
+        cv2.putText(fond, article['title'][:30], (50, 200), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+        
+        fond_path = "/tmp/fond_temp.png"
         cv2.imwrite(fond_path, fond)
 
-        # 2. Montage MoviePy simple
-        duree = 5 # Vidéo de 5 secondes pour le test
+        # 3. Traitement Angie
+        angie_rgba = extraire_chroma_key(angie_path)
+        angie_temp = "/tmp/angie_temp.png"
+        if angie_rgba is not None:
+            angie_resized = cv2.resize(angie_rgba, (800, 1200))
+            cv2.imwrite(angie_temp, angie_resized)
         
+        # 4. Composition MoviePy simplifiée
         fond_clip = ImageClip(fond_path).set_duration(duree)
-        avatar_clip = ImageClip(avatar_path).set_duration(duree).resize(width=VIDEO_WIDTH*0.8)
-        avatar_clip = avatar_clip.set_position(('center', 'bottom'))
-
-        video = CompositeVideoClip([fond_clip, avatar_clip], size=(VIDEO_WIDTH, VIDEO_HEIGHT))
+        clips = [fond_clip]
         
-        # On génère sans audio pour le premier test car Google Cloud TTS demande une config complexe
-        video.write_videofile(output_path, fps=FPS, codec="libx264", logger=None)
-        
-        video.close()
-        return True
+        if os.path.exists(angie_temp):
+            angie_clip = ImageClip(angie_temp, transparent=True).set_duration(duree).set_position(("center", "bottom"))
+            clips.append(angie_clip)
 
+        video = CompositeVideoClip(clips, size=(1080, 1920))
+        video.write_videofile(str(output_path), fps=24, codec="libx264", logger=None)
+        
+        return str(output_path)
     except Exception as e:
-        print(f"❌ Erreur montage : {e}")
-        return False
+        print(f"❌ Erreur video_animator : {e}")
+        return None
