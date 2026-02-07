@@ -126,7 +126,7 @@ def diffuser_video_telegram(video_path: str, article: Dict):
                 f"📺 *JT SPÉCIAL 3D BY ANGIE*\n\n"
                 f"🎯 *{article['title']}*\n\n"
                 f"📍 *Source :* {article['source'].upper()}\n"
-                f"🔗 [Lire l'article complet]({article['link']})\n\n"
+                def creer_video_article(article: dict, angie_image_path: str) -> Optional[str]:
                 f"🤖 _Traduction et synthèse par Gemini 1.5 Flash_"
             )
             
@@ -195,3 +195,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
