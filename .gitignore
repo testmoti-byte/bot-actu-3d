@@ -1,0 +1,34 @@
+# Environnement
+.env
+.env.local
+.env.*.local
+venv/
+env/
+ENV/
+
+# Cache articles
+articles_cache.json
+*.pyc
+__pycache__/
+.Python
+
+# Fichiers temporaires
+*.mp3
+*.wav
+/tmp/
+*.tmp
+
+# Output vidéos
+output/videos_generees/
+*.mp4
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# OS
+Thumbs.db
+.cache
