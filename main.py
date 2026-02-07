@@ -11,16 +11,14 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
-# Import sécurisé
-try:
-    from video_animator import creer_video_article
-except ImportError:
-    print("⚠️ Module 'video_animator' introuvable. Vérifie le nom du fichier.")
+# --- IMPORTS DES MODULES PERSONNALISÉS ---
+import video_animator
+from video_animator import creer_video_article
 
-load_dotenv()
+print("✅ Module video_animator chargé avec succès !")
 
 # --- CONFIGURATION ---
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+load_dotenv() # N'oublie pas de charger le .env avant de lire les variables
 # On gère le cas où LISTE_ID est vide pour éviter les crashs
 IDS_STR = os.getenv("TELEGRAM_CHAT_IDS", "")
 LISTE_ID = [id.strip() for id in IDS_STR.split(",") if id.strip()]
@@ -134,3 +132,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
