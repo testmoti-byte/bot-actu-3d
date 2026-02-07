@@ -1,11 +1,18 @@
+# --- Cœur du bot ---
 requests>=2.31.0
-feedparser>=6.0.0
-google-generativeai>=0.3.0
-python-dotenv>=1.0.0
+feedparser>=6.0.12
+python-dotenv>=1.0.1
+schedule>=1.2.2
+
+# --- Intelligence Artificielle ---
+google-generativeai>=0.8.3
+
+# --- Vidéo et Image ---
+opencv-python-headless>=4.8.0  # Version spéciale pour serveurs (plus légère)
+numpy>=1.24.0,<2.0.0           # Verrouillé pour éviter l'erreur de compatibilité Numpy 2.0
 moviepy>=1.0.3
-opencv-python>=4.8.0
-numpy>=1.24.0
-pillow>=10.0.0
-schedule>=1.2.0
-pyttsx3>=2.90
-google-cloud-texttospeech>=2.14.0
+Pillow>=10.2.0
+
+# --- Audio (Attention) ---
+# pyttsx3>=2.90 
+# Note : pyttsx3 nécessite des drivers système (espeak) souvent absents sur GitHub.
