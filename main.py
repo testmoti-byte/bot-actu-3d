@@ -11,62 +11,72 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
-# Importer ton module d'animation
+# Import du module vidéo (doit être dans le même dossier sur GitHub)
 try:
     from video_animator import creer_video_article
 except ImportError:
-    print("⚠️ Module 'video_animator' non trouvé. Assure-toi qu'il est dans le même dossier.")
+    print("⚠️ Module 'video_animator' non trouvé. Assure-toi qu'il est présent sur ton GitHub.")
 
-# Load env variables
+# Chargement des variables d'environnement
 load_dotenv()
 
-# --- CONFIG ---
+# --- CONFIGURATION ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 LISTE_ID = [id.strip() for id in os.getenv("TELEGRAM_CHAT_IDS", "").split(",") if id.strip()]
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-# Configuration IA
+# Configuration de l'IA Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Chemins
+# Chemins et Dossiers
 BASE_DIR = Path(__file__).parent
 IMAGES_DIR = BASE_DIR / "images"
 VIDEOS_DIR = BASE_DIR / "videos"
 CACHE_FILE = BASE_DIR / "articles_cache.json"
 
+# Création des dossiers si inexistants
+IMAGES_DIR.mkdir(exist_ok=True)
+VIDEOS_DIR.mkdir(exist_ok=True)
+
+# Mots-clés pour le filtrage
 KEYWORDS_3D = [
     "impression 3d", "3d printing", "additive manufacturing", 
     "cao", "modélisation 3d", "résine", "fdm", "maker", "prototypage"
 ]
 
+# TES SOURCES SONT ICI : Ajoute tes nouveaux liens ici
 RSS_FEEDS = {
     "3dnatives": "https://www.3dnatives.com/fr/feed/",
     "fabbaloo": "https://www.fabbaloo.com/blog/feed.xml",
 }
 
-# ============ IA : GÉNÉRATION DU SCRIPT ============
+# ============ IA : TRADUCTION ET SCRIPT ============
 
-def generer_script_jt(titre: str, resume: str) -> str:
-    """Transforme un résumé d'article en script de présentatrice TV (Angie)."""
+def generer_script_jt(titre: str, resume: str, source_name: str) -> str:
+    """Traduit et adapte l'article pour le JT d'Angie."""
     prompt = f"""
-    Tu es Angie, une présentatrice passionnée par l'impression 3D. 
-    Réédite l'actualité suivante pour un JT court et dynamique de 30 secondes.
-    Utilise un ton enthousiaste et professionnel. 
+    Tu es Angie, présentatrice passionnée d'un JT sur l'impression 3D.
     
+    INFO À TRAITER :
+    SOURCE: {source_name}
     TITRE: {titre}
     RÉSUMÉ: {resume}
     
-    Format: Donne uniquement le texte que je dois lire, sans commentaires.
+    MISSION :
+    1. Si l'info est en anglais, traduis-la en français de manière fluide.
+    2. Réécris le texte pour un JT dynamique de 30 secondes.
+    3. Ton ton doit être enthousiaste et professionnel.
+    4. Donne UNIQUEMENT le texte à lire, sans commentaires.
     """
     try:
         response = model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
         print(f"  ⚠️ Erreur Gemini: {e}")
-        return f"Bonjour à tous ! Aujourd'hui on parle de : {titre}. Une avancée majeure pour le secteur."
+        return f"Bonjour à tous ! Aujourd'hui, {source_name} nous rapporte : {titre}. Une info cruciale pour le secteur."
 
-# ============ SCRAPING & CACHE ============
+# ============ SCRAPING & GESTION CACHE ============
 
 def scraper_rss_feeds() -> List[Dict]:
     articles = []
@@ -78,7 +88,6 @@ def scraper_rss_feeds() -> List[Dict]:
                 texte_complet = (entry.get('title', '') + " " + entry.get('summary', '')).lower()
                 
                 if any(kw in texte_complet for kw in KEYWORDS_3D):
-                    # Tentative de récupération d'image dans le flux
                     image_url = None
                     if 'links' in entry:
                         for link in entry.links:
@@ -107,87 +116,82 @@ def sauvegarder_cache(ids: set):
     with open(CACHE_FILE, 'w') as f:
         json.dump(list(ids), f)
 
-# ============ CORE LOGIC ============
-
-def traiter_articles():
-    print(f"\n🚀 DÉMARRAGE PIPELINE - {datetime.now().strftime('%H:%M:%S')}")
-    
-    cache = charger_cache()
-    nouveaux = scraper_rss_feeds()
-    
-    a_traiter = [a for a in nouveaux if a['link'] not in cache]
-    print(f"  📊 {len(a_traiter)} nouveaux articles à traiter.")
-
-    for article in a_traiter[:3]: # Limite à 3 par cycle pour éviter les quotas
-        try:
-            print(f"\n🎬 Traitement: {article['title'][:50]}...")
-            
-            # 1. Générer le script avec Gemini
-            script_jt = generer_script_jt(article['title'], article['summary'])
-            article['script_jt'] = script_jt
-            
-            # 2. Appel au module d'animation
-            # On passe le script généré au lieu du résumé brut
-            angie_image = str(IMAGES_DIR / "angie_neutre.png")
-            
-            # Ici, j'assume que creer_video_article accepte le dictionnaire article
-            video_path = creer_video_article(article, angie_image)
-            
-            if video_path and Path(video_path).exists():
-                # 3. Diffusion
-                diffuser_video_telegram(video_path, article)
-                cache.add(article['link'])
-            
-        except Exception as e:
-            print(f"  ❌ Erreur sur l'article: {e}")
-            
-    sauvegarder_cache(cache)
-    print("\n✅ Cycle terminé")
+# ============ DIFFUSION TELEGRAM ============
 
 def diffuser_video_telegram(video_path: str, article: Dict):
+    """Envoie la vidéo finale avec la source et le lien."""
     for chat_id in LISTE_ID:
         try:
-            message = (f"📺 *JT SPÉCIAL 3D*\n\n"
-                       f"🎯 *{article['title']}*\n\n"
-                       f"🔗 [Lire l'article]({article['link']})")
+            message = (
+                f"📺 *JT SPÉCIAL 3D BY ANGIE*\n\n"
+                f"🎯 *{article['title']}*\n\n"
+                f"📍 *Source :* {article['source'].upper()}\n"
+                f"🔗 [Lire l'article complet]({article['link']})\n\n"
+                f"🤖 _Traduction et synthèse par Gemini 1.5 Flash_"
+            )
             
             with open(video_path, 'rb') as v:
                 requests.post(
                     f"https://api.telegram.org/bot{TOKEN}/sendVideo",
                     data={'chat_id': chat_id, 'caption': message, 'parse_mode': 'Markdown'},
                     files={'video': v},
-                    timeout=120
+                    timeout=150
                 )
-            print(f"  ✅ Envoyé à {chat_id}")
+            print(f"  ✅ Envoyé avec succès à {chat_id}")
         except Exception as e:
             print(f"  ❌ Erreur envoi Telegram ({chat_id}): {e}")
 
-# ============ SCHEDULING & MAIN ============
+# ============ LOGIQUE PRINCIPALE ============
 
-def planifier(mode: str, valeur: str):
-    if mode == "schedule":
-        schedule.every().day.at(valeur).do(traiter_articles)
-    elif mode == "every":
-        schedule.every(int(valeur)).hours.do(traiter_articles)
+def traiter_articles():
+    print(f"\n🚀 DÉMARRAGE DU JT - {datetime.now().strftime('%H:%M:%S')}")
     
-    print(f"⏰ Mode {mode} activé ({valeur}). Ctrl+C pour quitter.")
-    while True:
-        schedule.run_pending()
-        time.sleep(30)
+    cache = charger_cache()
+    nouveaux = scraper_rss_feeds()
+    
+    a_traiter = [a for a in nouveaux if a['link'] not in cache]
+    print(f"  📊 {len(a_traiter)} nouveaux articles détectés.")
+
+    for article in a_traiter[:3]: # Limite à 3 pour ne pas saturer
+        try:
+            print(f"\n🎬 Préparation : {article['title'][:50]}...")
+            
+            # Génération du script traduit
+            script_jt = generer_script_jt(article['title'], article['summary'], article['source'])
+            article['script_jt'] = script_jt
+            
+            # Chemin vers l'image d'Angie (à mettre dans ton dossier /images sur GitHub)
+            angie_path = str(IMAGES_DIR / "angie_neutre.png")
+            
+            # Création de la vidéo via le module vidéo_animator
+            video_path = creer_video_article(article, angie_path)
+            
+            if video_path and Path(video_path).exists():
+                diffuser_video_telegram(video_path, article)
+                cache.add(article['link'])
+            
+        except Exception as e:
+            print(f"  ❌ Échec du traitement : {e}")
+            
+    sauvegarder_cache(cache)
+    print("\n✅ Session terminée.")
+
+# ============ LANCEMENT ============
 
 def main():
-    IMAGES_DIR.mkdir(exist_ok=True)
-    VIDEOS_DIR.mkdir(exist_ok=True)
-
     if len(sys.argv) > 1:
         mode = sys.argv[1]
         if mode == "now":
             traiter_articles()
-        elif mode in ["schedule", "every"]:
-            valeur = sys.argv[2] if len(sys.argv) > 2 else ("20:00" if mode == "schedule" else "6")
-            planifier(mode, valeur)
+        elif mode == "schedule":
+            valeur = sys.argv[2] if len(sys.argv) > 2 else "18:00"
+            schedule.every().day.at(valeur).do(traiter_articles)
+            print(f"⏰ JT planifié tous les jours à {valeur}.")
+            while True:
+                schedule.run_pending()
+                time.sleep(60)
     else:
-        print("Usage: python main.py [now|schedule HH:MM|every X]")
+        print("Usage: python main.py [now|schedule HH:MM]")
 
 if __name__ == "__main__":
     main()
