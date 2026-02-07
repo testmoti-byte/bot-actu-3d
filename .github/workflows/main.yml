@@ -1,4 +1,4 @@
-name: JT Auto 3D
+name: JT NEWS 3D
 on:
   schedule:
     - cron: '0 */8 * * *' # Se lance toutes les 4 heures
