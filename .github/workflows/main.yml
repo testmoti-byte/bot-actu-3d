@@ -1,30 +1,27 @@
-name: Actu_bot_3d 🤖
-
+name: JT Auto 3D
 on:
   schedule:
-    - cron: '0 7 * * *'  # 8h00 France
-    - cron: '0 19 * * *' # 20h00 France
-  workflow_dispatch:      # Pour lancer à la main
+    - cron: '0 */8 * * *' # Se lance toutes les 4 heures
+  workflow_dispatch:      # Permet de le lancer manuellement (bouton)
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Récupérer le code
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Installer Python
-        uses: actions/setup-python@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
-      - name: Installer les outils
-        run: pip install requests feedparser google-generativeai
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - name: Lancer le bot
-        run: |
-          if [ "${{ github.event.schedule }}" == "0 7 * * *" ]; then
-            python bot_telegram.py matin
-          else
-            python bot_telegram.py soir
-          fi
+      - name: Run Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
+        run: python main.py
