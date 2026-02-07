@@ -2,7 +2,7 @@ import os
 import cv2
 import numpy as np
 from pathlib import Path
-from moviepy import ImageClip, CompositeVideoClip, AudioFileClip
+from moviepy.editor import ImageClip, CompositeVideoClip, AudioFileClip
 # On retire TextClip qui fait planter GitHub
 
 OUTPUT_DIR = Path("videos")
