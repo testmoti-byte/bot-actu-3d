@@ -1,8 +1,9 @@
 name: JT NEWS 3D
+
 on:
   schedule:
-    - cron: '0 18 * * *'  # Se lance tous les jours à 20h00 UTC
-  workflow_dispatch:      # Permet de le lancer manuellement (bouton)
+    - cron: '0 18 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -19,10 +20,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-- name: Run Bot
+      - name: Run Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}
-          PYTHONPATH: .  # <-- FORCE PYTHON À REGARDER DANS LE DOSSIER COURANT
+          PYTHONPATH: .
         run: python main.py now
