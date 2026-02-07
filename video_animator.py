@@ -1,45 +1,48 @@
 import os
-from moviepy.editor import ImageClip, CompositeVideoClip, AudioFileClip, ColorClip
+from moviepy.editor import ImageClip, CompositeVideoClip, AudioFileClip, VideoFileClip, concatenate_videoclips
 from gtts import gTTS
 from pathlib import Path
 
 def creer_video_article(article, chemin_avatar):
-    """Crée une vidéo complète avec voix, fond et personnage."""
-    
-    # 1. Générer l'audio à partir du script Gemini
+    # 1. Génération de la voix
     audio_path = "temp_audio.mp3"
     tts = gTTS(text=article['script_jt'], lang='fr')
     tts.save(audio_path)
-    
     audio_clip = AudioFileClip(audio_path)
     duree = audio_clip.duration
 
-    # 2. Création du Fond (Couleur ou Image de studio)
-    # On crée un fond bleu de 1080x1920 (format TikTok/Reels)
-    fond = ColorClip(size=(1080, 1920), color=[0, 51, 102]).set_duration(duree)
+    # 2. Chargement des images (Fond, Bureau, Logo)
+    # Note : MoviePy peut supprimer le fond vert avec .mask_color
+    ville = ImageClip("images/VILLE_S1.png").set_duration(duree).resize(height=1080)
+    bureau = ImageClip("images/rendu_bureau.png").set_duration(duree).resize(height=1080)
+    # Ici, on simule l'incrustation. Si ton rendu bureau a un vrai fond vert :
+    # bureau = bureau.fx(vfx.mask_color, color=[0, 255, 0], thr=100, s=5)
 
-    # 3. Ajout de la présentatrice (Léa ou Angie)
-    # On la place en bas de l'écran
+    logo = (ImageClip("images/LOGO_CHAINE.png")
+            .set_duration(duree)
+            .resize(width=200)
+            .set_position(("right", "top")))
+
     presentatrice = (ImageClip(chemin_avatar)
                      .set_duration(duree)
-                     .resize(width=900) # Ajuste selon tes images
+                     .resize(height=800)
                      .set_position(("center", "bottom")))
 
-    # 4. Ajout du Titre
-    from moviepy.editor import TextClip
-    # Note: TextClip peut être capricieux sur GitHub, on commence simple
-    
-    # Assemblage final
-    video = CompositeVideoClip([fond, presentatrice])
-    video = video.set_audio(audio_clip)
+    # 3. Montage du JT (Le Sandwich)
+    # Ordre : Ville -> Bureau -> Présentatrice -> Logo
+    clip_jt = CompositeVideoClip([ville, bureau, presentatrice, logo])
+    clip_jt = clip_jt.set_audio(audio_clip)
 
-    # Exportation
-    output_filename = f"video_{int(os.getpid())}.mp4"
-    video.write_videofile(output_filename, fps=24, codec="libx264", audio_codec="aac")
+    # 4. Ajout de l'Intro Blender
+    chemin_intro = "VIDEO/COMMENCEMENT.blend0001-0063.mp4"
+    if os.path.exists(chemin_intro):
+        intro = VideoFileClip(chemin_intro)
+        video_finale = concatenate_videoclips([intro, clip_jt])
+    else:
+        video_finale = clip_jt
+
+    # 5. Export
+    output_filename = f"JT_Elise_{int(os.getpid())}.mp4"
+    video_finale.write_videofile(output_filename, fps=24, codec="libx264")
     
-    # Nettoyage
-    audio_clip.close()
-    if os.path.exists(audio_path):
-        os.remove(audio_path)
-        
     return output_filename
