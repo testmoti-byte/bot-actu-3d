@@ -1,21 +1,45 @@
-# --- Cœur du bot ---
-requests>=2.31.0
-feedparser>=6.0.12
-python-dotenv>=1.0.1
-schedule>=1.2.2
+# JT 3D PRINTING NEWS - Python Requirements
+# Install: pip install -r requirements.txt
 
-# --- Intelligence Artificielle ---
-google-generativeai>=0.8.3
+# ====== WEB SCRAPING ======
+requests==2.31.0
+feedparser==6.0.10
+beautifulsoup4==4.12.2
+selenium==4.15.2
+lxml==4.9.3
 
-# --- Vidéo et Image ---
-opencv-python-headless>=4.8.0  # Version spéciale pour serveurs (plus légère)
-numpy>=1.24.0,<2.0.0           # Verrouillé pour éviter l'erreur de compatibilité Numpy 2.0
-moviepy==1.0.3
-Pillow>=10.2.0
+# ====== GOOGLE CLOUD APIs ======
+google-generativeai==0.3.0
+google-cloud-texttospeech==2.14.1
+google-api-python-client==2.100.0
+google-auth-oauthlib==1.1.0
+google-auth==2.25.2
 
-# --- Audio (Attention) ---
-# pyttsx3>=2.90
-gTTS>=2.5.1
-# Note : pyttsx3 nécessite des drivers système (espeak) souvent absents sur GitHub.
+# ====== SOCIAL MEDIA ======
+tweepy==4.14.0
+praw==7.7.0
+python-telegram-bot==20.3
+instagrapi==2.0.0
 
+# ====== DATA PROCESSING ======
+pandas==2.1.3
+numpy==1.26.2
+python-dotenv==1.0.0
 
+# ====== AUDIO/VIDEO ======
+pydub==0.25.1
+pillow==10.1.0
+
+# ====== UTILITIES ======
+pyyaml==6.0.1
+tqdm==4.66.1
+colorama==0.4.6
+python-dateutil==2.8.2
+
+# ====== OPTIONAL: Blender Python ======
+# bpy (install with Blender, not via pip)
+
+# ====== DEV/TESTING ======
+pytest==7.4.3
+black==23.12.0
+pylint==3.0.3
