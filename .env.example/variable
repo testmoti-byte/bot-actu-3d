@@ -1,3 +1,36 @@
-Your ID : 6773491313
-TELEGRAM_BOT_TOKEN= 8547065074:AAEiZ4Jw5maZMbkYAIiJtnrIMPv1hk5dU54
-GOOGLE_AI_STUDIO_KEY= AIzaSyCzYrDqOvtChRHrdjFGFTjwx7r2shhTb74
+# JT 3D PRINTING NEWS - Environment Variables
+# INSTRUCTIONS:
+# 1. Copie tout ce contenu
+# 2. Crée un fichier .env sur ton PC
+# 3. Colle ce contenu dedans
+# 4. Remplace les valeurs "xxx" par tes vraies clés
+# 5. NE PAS commit sur GitHub (il est dans .gitignore)
+
+# ====== GOOGLE APIS ======
+GEMINI_API_KEY=AIza_TA_CLE_GEMINI_ICI_xxx
+GOOGLE_TTS_API_KEY=AIza_TA_CLE_GOOGLE_TTS_ICI_xxx
+GOOGLE_SEARCH_API_KEY=ta_google_search_key_ici_xxx
+
+# ====== TELEGRAM ======
+TELEGRAM_BOT_TOKEN=123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef_xxx
+TELEGRAM_CHAT_ID=987654321_xxx
+
+# ====== OPTIONAL: Social Media APIs ======
+TWITTER_API_KEY=ta_twitter_key_ici_xxx
+TWITTER_API_SECRET=ta_twitter_secret_ici_xxx
+REDDIT_CLIENT_ID=ta_reddit_id_ici_xxx
+REDDIT_CLIENT_SECRET=ta_reddit_secret_ici_xxx
+
+# ====== OLLAMA (Local LLM) ======
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama2
+
+# ====== BLENDER ======
+BLENDER_PATH=blender
+BLENDER_PROJECT=blender/STUDIO2.blend
+
+# ====== OUTPUT ======
+OUTPUT_FORMAT=1080x1920
+OUTPUT_FPS=30
+OUTPUT_DIR=renders/
+OUTPUT_AUDIO_DIR=data/
