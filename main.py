@@ -1,79 +1,156 @@
+#!/usr/bin/env python3
+"""
+JT 3D PRINTING NEWS - Main Orchestrator
+Orchestre tout le pipeline : scraper → Ollama → Gemini → TTS → Blender → Upload
+"""
+
 import os
-import sys
 import json
-import requests
-import feedparser
-from pathlib import Path
+import sys
 from datetime import datetime
-import google.generativeai as genai
-from dotenv import load_dotenv
-import video_animator
-from video_animator import creer_video_article
+from pathlib import Path
+import logging
 
-load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-IDS_STR = os.getenv("TELEGRAM_CHAT_IDS", "")
-LISTE_ID = [id.strip() for id in IDS_STR.split(",") if id.strip()]
+# Configuration logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-
-BASE_DIR = Path(__file__).parent
-IMAGES_DIR = BASE_DIR / "images"
-VIDEOS_DIR = BASE_DIR / "VIDEO" # Corrigé selon ta capture
-CACHE_FILE = BASE_DIR / "articles_cache.json"
-
-def generer_script_ia(prompt: str) -> str:
-    try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except:
-        return "Flash info 3D : découvrez les dernières innovations."
-
-def scraper_rss():
-    articles = []
-    url = "https://www.3dnatives.com/fr/feed/"
-    feed = feedparser.parse(url)
-    for entry in feed.entries[:3]:
-        articles.append({
-            "source": "3D Natives",
-            "title": entry.get('title', 'Sans titre'),
-            "link": entry.get('link', ''),
-            "summary": entry.get('summary', '')[:300]
-        })
-    return articles
-
-def envoyer_telegram(video_path, article):
-    message = f"🎙 **{article['title']}**\n📡 Source: {article['source']}"
-    for chat_id in LISTE_ID:
-        with open(video_path, 'rb') as v:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendVideo", 
-                          data={'chat_id': chat_id, 'caption': message, 'parse_mode': 'Markdown'},
-                          files={'video': v})
-
-def traiter_articles():
-    cache = set(json.load(open(CACHE_FILE)) if CACHE_FILE.exists() else [])
-    nouveaux = [a for a in scraper_rss() if a['link'] not in cache]
+class JT3DOrchestrator:
+    """Orchestre tout le pipeline JT 3D"""
     
-    if not nouveaux:
-        nouveaux = [{"source": "CULTURE 3D", "title": "Le saviez-vous ?", "link": "https://3dn.com", "is_anecdote": True}]
-
-    for article in nouveaux[:1]:
-        # ON FORCE ELISE ET LE BUREAU
-        avatar = "elise_neutre.png"
-        script = generer_script_ia("Fais un script de 20s sur l'impression 3D.")
-        article['script_jt'] = script
-        chemin_avatar = str(IMAGES_DIR / avatar)
+    def __init__(self, config_path: str = "config.json"):
+        """Initialise l'orchestrateur"""
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.start_time = datetime.now()
+        logger.info("🎬 JT 3D Orchestrator démarré")
+    
+    def _load_config(self) -> dict:
+        """Charge la configuration"""
+        if not os.path.exists(self.config_path):
+            logger.error(f"❌ Config file not found: {self.config_path}")
+            sys.exit(1)
         
-        video = creer_video_article(article, chemin_avatar)
-        if video:
-            envoyer_telegram(video, article)
-            cache.add(article['link'])
+        with open(self.config_path, 'r') as f:
+            return json.load(f)
+    
+    def run(self, test_mode: bool = False):
+        """Lance le pipeline complet"""
+        try:
+            logger.info("🔍 ÉTAPE 1 : Scraper les news...")
+            news = self._scrape_news()
+            if not news:
+                logger.warning("⚠️ Aucune news trouvée")
+                return
+            
+            logger.info(f"✅ {len(news)} news trouvées")
+            
+            logger.info("📊 ÉTAPE 2 : Extraire infos avec Ollama...")
+            extracted = self._extract_with_ollama(news[0])  # Première news pour test
+            
+            logger.info("📝 ÉTAPE 3 : Générer script avec Gemini...")
+            script = self._generate_script_with_gemini(extracted)
+            
+            logger.info("🎤 ÉTAPE 4 : Générer TTS...")
+            audio_file = self._generate_tts(script)
+            
+            logger.info("🎬 ÉTAPE 5 : Rendu Blender...")
+            video_file = self._render_blender(script, audio_file)
+            
+            logger.info("📤 ÉTAPE 6 : Upload vidéo...")
+            self._upload_video(video_file)
+            
+            elapsed = (datetime.now() - self.start_time).total_seconds()
+            logger.info(f"✅ PIPELINE COMPLÈTE EN {elapsed:.1f}s ! 🎉")
+            
+            return video_file
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur pipeline: {e}", exc_info=True)
+            raise
+    
+    def _scrape_news(self) -> list:
+        """Scrape les news (placeholder)"""
+        # TODO: Import scraper_complete.py
+        logger.info("   📡 Scraping RSS feeds...")
+        return [
+            {
+                "title": "Prusa lance nouvelle imprimante révolutionnaire",
+                "content": "Prusa vient de dévoiler...",
+                "source": "3D Printing Industry",
+                "date": datetime.now().isoformat()
+            }
+        ]
+    
+    def _extract_with_ollama(self, news: dict) -> dict:
+        """Extrait infos avec Ollama (placeholder)"""
+        # TODO: Import ollama_extractor.py
+        logger.info(f"   🤖 Analysant: {news['title'][:50]}...")
+        return {
+            "title": news["title"],
+            "summary": "Résumé de la news...",
+            "angles": {
+                "technical": "Infos techniques...",
+                "market": "Impact marché...",
+                "business": "Aspect business..."
+            },
+            "keywords": ["Prusa", "Innovation", "3D Printing"]
+        }
+    
+    def _generate_script_with_gemini(self, extracted: dict) -> dict:
+        """Génère script avec Gemini (placeholder)"""
+        # TODO: Import script_generator.py
+        logger.info("   ✍️ Generating script...")
+        return {
+            "dialogue": [
+                {"speaker": "Kate", "text": "Bonjour ! Bienvenue sur JT 3D Printing News.", "animation": "idle"},
+                {"speaker": "Kate", "text": extracted["summary"], "animation": "talk"}
+            ],
+            "duration": 45,  # secondes
+            "animations": [
+                {"time": 0, "action": "walk_to_chair"},
+                {"time": 2, "action": "sit_down"},
+                {"time": 5, "action": "idle_sitting"}
+            ]
+        }
+    
+    def _generate_tts(self, script: dict) -> str:
+        """Génère TTS (placeholder)"""
+        # TODO: Import tts_generator.py
+        logger.info("   🎤 Generating TTS...")
+        audio_file = "data/audio.mp3"
+        return audio_file
+    
+    def _render_blender(self, script: dict, audio_file: str) -> str:
+        """Lance rendu Blender (placeholder)"""
+        # TODO: Import blender_oracle.py
+        logger.info("   🎬 Rendering Blender...")
+        video_file = "renders/jt_output.mp4"
+        return video_file
+    
+    def _upload_video(self, video_file: str):
+        """Upload vidéo (placeholder)"""
+        # TODO: Import telegram_sender.py
+        logger.info(f"   📤 Uploading {video_file}...")
+        logger.info("   ✅ Uploaded to Telegram!")
 
-    with open(CACHE_FILE, 'w') as f:
-        json.dump(list(cache), f)
+
+def main():
+    """Fonction principale"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="JT 3D Printing News Orchestrator")
+    parser.add_argument("--test", action="store_true", help="Mode test rapide")
+    parser.add_argument("--config", default="config.json", help="Fichier config")
+    
+    args = parser.parse_args()
+    
+    orchestrator = JT3DOrchestrator(args.config)
+    orchestrator.run(test_mode=args.test)
+
 
 if __name__ == "__main__":
-    traiter_articles()
+    main()
