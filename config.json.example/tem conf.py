@@ -43,4 +43,8 @@
     "enabled": false
   }
 }
+```
 
+**Sauvegarde et relance:**
+```
+python scripts/main.py --test
