@@ -32,7 +32,7 @@ class BlenderOracle:
         logger.info("⭐ BLENDER ORACLE INITIALIZED")
         logger.info(f"   Blender: {blender_path}")
         logger.info(f"   Project: {blend_file}")
-        logger.info(f"   Animations dir: {animations_dir}")
+        logger.info(f"   Animations dir: {self.animations_dir}")
     
     def render_jt(self, script: Dict, audio_file: str, output_file: str = "renders/jt_output.mp4") -> str:
         """Rend un JT complet"""
