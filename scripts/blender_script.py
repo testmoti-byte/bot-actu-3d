@@ -248,22 +248,36 @@ def setup_render():
         os.makedirs(output_dir, exist_ok=True)
         print(f"   Dossier créé: {output_dir}")
     
-    # Format vidéo
-    bpy.context.scene.render.image_settings.file_format = 'FFMPEG'
-    bpy.context.scene.render.ffmpeg.format = 'MPEG4'
-    bpy.context.scene.render.ffmpeg.codec = 'H264'
-    
     # Résolution
     bpy.context.scene.render.resolution_x = 1080
     bpy.context.scene.render.resolution_y = 1920
     bpy.context.scene.render.resolution_percentage = 100
     
+    # Essayer de configurer le format vidéo
+    video_format_ok = False
+    
+    try:
+        # Blender 4.x et certains builds
+        bpy.context.scene.render.image_settings.file_format = 'FFMPEG'
+        bpy.context.scene.render.ffmpeg.format = 'MPEG4'
+        bpy.context.scene.render.ffmpeg.codec = 'H264'
+        video_format_ok = True
+        print(f"   Format: MP4 (H264)")
+    except TypeError:
+        print(f"   ⚠️ FFMPEG non disponible, on va rendre en images PNG")
+    
     # Fichier de sortie
-    bpy.context.scene.render.filepath = OUTPUT_FILE
+    if video_format_ok:
+        bpy.context.scene.render.filepath = OUTPUT_FILE
+    else:
+        # Rendre en images PNG, on les assemblera après
+        png_output = OUTPUT_FILE.replace('.mp4', '_')
+        bpy.context.scene.render.image_settings.file_format = 'PNG'
+        bpy.context.scene.render.filepath = png_output
+        print(f"   Format: PNG (images)")
     
     print(f"   Résolution: 1080x1920")
-    print(f"   Codec: H264")
-    print(f"   Sortie: {OUTPUT_FILE}")
+    print(f"   Sortie: {bpy.context.scene.render.filepath}")
 
 
 def render():
