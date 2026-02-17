@@ -14,292 +14,278 @@ Fonctionnalités :
 import bpy
 import os
 import sys
-import json
-from math import floor
 
 # ============================================================
-# CONFIGURATION - Récupère les paramètres de blender_oracle.py
+# CONFIGURATION
 # ============================================================
 
 # Lire les variables d'environnement passées par blender_oracle.py
 _audio_file_from_env = os.environ.get("JT_AUDIO_FILE", "")
 _output_file_from_env = os.environ.get("JT_OUTPUT_FILE", "")
 
-# Chemins (relatifs au fichier .blend)
-CONFIG = {
-    # Fichiers
-    "kara_fbx": "animations/Kara.fbx",  # Chemin vers Kara en FBX
+# Déterminer le dossier de base (là où est le .blend)
+blend_dir = os.path.dirname(bpy.data.filepath) if bpy.data.filepath else os.getcwd()
+print(f"📁 Dossier du .blend: {blend_dir}")
+
+# Chemins absolus (basés sur le dossier du .blend)
+KARA_PATH = os.path.join(blend_dir, "animations", "Kara.fbx")
+ANIMATIONS_DIR = os.path.join(blend_dir, "animations")
+
+# Fichier audio (utiliser celui de l'environnement ou défaut)
+AUDIO_FILE = _audio_file_from_env if _audio_file_from_env else os.path.join(blend_dir, "data", "audio.mp3")
+
+# Fichier de sortie
+OUTPUT_FILE = _output_file_from_env if _output_file_from_env else os.path.join(blend_dir, "renders", "jt_output.mp4")
+
+# Configuration
+FPS = 30
+CAMERA_ZOOM_DURATION = 2.0  # secondes
+
+print("=" * 60)
+print("🎬 BLENDER SCRIPT - CONFIGURATION")
+print(f"   Kara: {KARA_PATH}")
+print(f"   Animations: {ANIMATIONS_DIR}")
+print(f"   Audio: {AUDIO_FILE}")
+print(f"   Sortie: {OUTPUT_FILE}")
+print("=" * 60)
+
+
+def check_files():
+    """Vérifie que tous les fichiers nécessaires existent"""
+    print("\n📂 Vérification des fichiers...")
     
-    # Animations Mixamo (dans le dossier animations/)
-    "animations": {
-        "sitting_drinking": "animations/Sitting Drinking.fbx",
-        "sitting_talking": "animations/Sitting Talking.fbx",
-        "stand_to_sit": "animations/Stand To Sit.fbx",
-        "stand_up": "animations/Stand Up.fbx",
-        "walking_arc_left": "animations/Walking Arc Left.fbx",
-    },
+    files_ok = True
     
-    # Audio généré par le TTS (peut être remplacé par env var)
-    "audio_file": _audio_file_from_env if _audio_file_from_env else "data/audio.mp3",
+    # Vérifier Kara
+    if os.path.exists(KARA_PATH):
+        print(f"   ✅ Kara trouvé: {KARA_PATH}")
+    else:
+        print(f"   ❌ Kara NON trouvé: {KARA_PATH}")
+        files_ok = False
     
-    # Sortie (peut être remplacé par env var)
-    "output_file": _output_file_from_env if _output_file_from_env else "renders/jt_output.mp4",
+    # Vérifier le dossier animations
+    if os.path.exists(ANIMATIONS_DIR):
+        print(f"   ✅ Dossier animations trouvé")
+        # Lister les animations disponibles
+        for f in os.listdir(ANIMATIONS_DIR):
+            if f.endswith('.fbx'):
+                print(f"      - {f}")
+    else:
+        print(f"   ❌ Dossier animations NON trouvé: {ANIMATIONS_DIR}")
+        files_ok = False
     
-    # Timing
-    "camera_zoom_duration": 2.0,  # Secondes de zoom caméra au début
+    # Vérifier l'audio
+    if os.path.exists(AUDIO_FILE):
+        print(f"   ✅ Audio trouvé: {AUDIO_FILE}")
+    else:
+        print(f"   ⚠️ Audio NON trouvé: {AUDIO_FILE} (on utilisera 30s par défaut)")
     
-    # FPS
-    "fps": 30,
-}
+    return files_ok
 
 
 def clear_scene():
-    """Nettoye les objets orphelins mais garde le studio"""
-    print("🧹 Nettoyage de la scène...")
-    # On ne supprime rien - le studio est déjà là
-    # On supprime juste Kara si elle existe déjà (re-run)
-    if "Kara" in bpy.data.objects:
-        bpy.data.objects.remove(bpy.data.objects["Kara"], do_unlink=True)
-        print("   Kara supprimée (re-import)")
+    """Nettoie Kara si elle existe déjà"""
+    print("\n🧹 Nettoyage...")
+    
+    # Supprimer Kara si elle existe déjà
+    for obj in bpy.data.objects:
+        if "Kara" in obj.name or "kara" in obj.name.lower():
+            bpy.data.objects.remove(obj, do_unlink=True)
+            print(f"   Supprimé: {obj.name}")
 
 
-def import_kara(fbx_path):
+def import_kara():
     """Importe Kara depuis le fichier FBX"""
-    print(f"📥 Import de Kara: {fbx_path}")
+    print(f"\n📥 Import de Kara...")
     
-    if not os.path.exists(fbx_path):
-        print(f"   ❌ Fichier non trouvé: {fbx_path}")
+    if not os.path.exists(KARA_PATH):
+        print(f"   ❌ Fichier non trouvé: {KARA_PATH}")
         return None
-    
-    # Importer le FBX
-    before_objects = set(bpy.data.objects)
-    bpy.ops.import_scene.fbx(filepath=fbx_path)
-    after_objects = set(bpy.data.objects)
-    
-    # Trouver le nouvel objet (Kara)
-    new_objects = after_objects - before_objects
-    if new_objects:
-        kara = list(new_objects)[0]
-        kara.name = "Kara"
-        print(f"   ✅ Kara importée: {kara.name}")
-        return kara
-    
-    print("   ⚠️ Kara non trouvée après import")
-    return None
-
-
-def position_kara(kara):
-    """Positionne Kara dans le studio (au bon endroit)"""
-    print("📍 Positionnement de Kara...")
-    
-    if not kara:
-        return
-    
-    # Position - à adapter selon ton studio
-    # Kara doit être au centre, près du bureau/écran holographique
-    kara.location = (0.0, 0.0, 0.0)  # À ajuster !
-    kara.rotation_euler = (0.0, 0.0, 0.0)  # Face caméra
-    
-    print(f"   Position: {kara.location}")
-
-
-def load_animation(anim_name, fbx_path):
-    """Charge une animation Mixamo et l'ajoute au NLA"""
-    print(f"🎭 Chargement animation: {anim_name}")
-    
-    if not os.path.exists(fbx_path):
-        print(f"   ❌ Fichier non trouvé: {fbx_path}")
-        return None
-    
-    # Importer l'animation
-    before_actions = set(bpy.data.actions)
-    bpy.ops.import_scene.fbx(filepath=fbx_path)
-    after_actions = set(bpy.data.actions)
-    
-    new_actions = after_actions - before_actions
-    if new_actions:
-        action = list(new_actions)[0]
-        action.name = f"Kara_{anim_name}"
-        print(f"   ✅ Animation chargée: {action.name} ({action.frame_range[1]} frames)")
-        return action
-    
-    print("   ⚠️ Aucune nouvelle action trouvée")
-    return None
-
-
-def get_audio_duration(audio_path):
-    """Calcule la durée de l'audio en secondes"""
-    print(f"🎵 Analyse audio: {audio_path}")
-    
-    if not os.path.exists(audio_path):
-        print("   ⚠️ Fichier audio non trouvé, durée par défaut: 60s")
-        return 60.0
     
     try:
-        import wave
-        with wave.open(audio_path, 'r') as audio:
-            frames = audio.getnframes()
-            rate = audio.getframerate()
-            duration = frames / float(rate)
+        # Sauvegarder les objets avant import
+        before = set(bpy.data.objects)
+        
+        # Importer le FBX
+        bpy.ops.import_scene.fbx(filepath=KARA_PATH)
+        
+        # Trouver les nouveaux objets
+        after = set(bpy.data.objects)
+        new_objects = after - before
+        
+        if new_objects:
+            # Le personnage est souvent le premier objet importé
+            for obj in new_objects:
+                if obj.type == 'ARMATURE' or obj.type == 'MESH':
+                    obj.name = "Kara"
+                    print(f"   ✅ Kara importée: {obj.name}")
+                    return obj
+        
+        print("   ⚠️ Objet non trouvé après import")
+        return None
+        
+    except Exception as e:
+        print(f"   ❌ Erreur import: {e}")
+        return None
+
+
+def get_audio_duration():
+    """Calcule la durée de l'audio"""
+    print(f"\n🎵 Analyse audio...")
+    
+    if not os.path.exists(AUDIO_FILE):
+        print(f"   ⚠️ Audio non trouvé, durée par défaut: 30s")
+        return 30.0
+    
+    try:
+        # Essayer avec mutagen (si installé)
+        try:
+            from mutagen.mp3 import MP3
+            audio = MP3(AUDIO_FILE)
+            duration = audio.info.length
             print(f"   ✅ Durée audio: {duration:.2f} secondes")
             return duration
+        except:
+            pass
+        
+        # Essayer avec wave (pour les WAV)
+        try:
+            import wave
+            with wave.open(AUDIO_FILE, 'r') as audio:
+                frames = audio.getnframes()
+                rate = audio.getframerate()
+                duration = frames / float(rate)
+                print(f"   ✅ Durée audio: {duration:.2f} secondes")
+                return duration
+        except:
+            pass
+        
+        # Si rien ne marche, durée par défaut
+        print(f"   ⚠️ Impossible de lire l'audio, durée par défaut: 30s")
+        return 30.0
+        
     except Exception as e:
-        print(f"   ⚠️ Erreur lecture audio: {e}, durée par défaut: 60s")
-        return 60.0
+        print(f"   ⚠️ Erreur: {e}, durée par défaut: 30s")
+        return 30.0
 
 
-def add_audio_to_scene(audio_path):
-    """Ajoute l'audio à la scène Blender"""
-    print(f"🔊 Ajout audio à la scène...")
+def setup_timeline(duration_seconds):
+    """Configure la timeline"""
+    total_frames = int(duration_seconds * FPS)
     
-    if not os.path.exists(audio_path):
-        print("   ⚠️ Fichier audio non trouvé")
-        return
-    
-    # Vérifier si l'audio existe déjà
-    for seq in bpy.context.scene.sequence_editor.sequences_all:
-        if seq.type == 'SOUND':
-            bpy.context.scene.sequence_editor.sequences.remove(seq)
-    
-    # Ajouter le nouvel audio
-    if not bpy.context.scene.sequence_editor:
-        bpy.context.scene.sequence_editor_create()
-    
-    bpy.context.scene.sequence_editor.sequences.new_sound(
-        "JT_Audio",
-        audio_path,
-        channel=1,
-        frame_start=1
-    )
-    print("   ✅ Audio ajouté à la timeline")
-
-
-def setup_timeline(duration_seconds, fps=30):
-    """Configure la timeline Blender"""
-    total_frames = int(duration_seconds * fps)
-    
-    print(f"⏱️ Configuration timeline:")
+    print(f"\n⏱️ Configuration timeline:")
     print(f"   Durée: {duration_seconds:.2f} secondes")
-    print(f"   FPS: {fps}")
-    print(f"   Total frames: {total_frames}")
+    print(f"   FPS: {FPS}")
+    print(f"   Frames: 1 à {total_frames}")
     
     bpy.context.scene.frame_start = 1
     bpy.context.scene.frame_end = total_frames
-    bpy.context.scene.render.fps = fps
+    bpy.context.scene.render.fps = FPS
     
     return total_frames
 
 
-def setup_camera_animation(duration_seconds, fps=30):
-    """Gère l'animation de la caméra"""
-    print("📹 Configuration caméra...")
+def add_audio():
+    """Ajoute l'audio à la scène"""
+    print(f"\n🔊 Ajout audio...")
     
-    zoom_frames = int(CONFIG["camera_zoom_duration"] * fps)
+    if not os.path.exists(AUDIO_FILE):
+        print(f"   ⚠️ Audio non trouvé, pas d'audio ajouté")
+        return
     
-    # Trouver la caméra active
+    try:
+        # Créer l'éditeur de séquence si nécessaire
+        if not bpy.context.scene.sequence_editor:
+            bpy.context.scene.sequence_editor_create()
+        
+        # Supprimer les anciens audios
+        for seq in bpy.context.scene.sequence_editor.sequences_all:
+            if seq.type == 'SOUND':
+                bpy.context.scene.sequence_editor.sequences.remove(seq)
+        
+        # Ajouter le nouvel audio
+        bpy.context.scene.sequence_editor.sequences.new_sound(
+            "JT_Audio",
+            AUDIO_FILE,
+            channel=1,
+            frame_start=1
+        )
+        print(f"   ✅ Audio ajouté à la timeline")
+        
+    except Exception as e:
+        print(f"   ❌ Erreur ajout audio: {e}")
+
+
+def find_camera():
+    """Trouve la caméra de la scène"""
+    print(f"\n📹 Recherche caméra...")
+    
+    # Chercher la caméra active
     camera = bpy.context.scene.camera
-    if not camera:
-        # Chercher une caméra dans la scène
-        for obj in bpy.context.scene.objects:
-            if obj.type == 'CAMERA':
-                camera = obj
-                bpy.context.scene.camera = camera
-                break
     
     if camera:
-        print(f"   Caméra trouvée: {camera.name}")
-        print(f"   Animation zoom: frames 1 à {zoom_frames}")
-        print(f"   Plan fixe: frames {zoom_frames} à {int(duration_seconds * fps)}")
-        
-        # L'animation de zoom est déjà dans le .blend (frames 1-60 environ)
-        # On la garde telle quelle pour les 2 premières secondes
-        
-        # Optionnel: Ajouter un keyframe pour fixer la position après le zoom
-        # Si l'animation de zoom s'arrête à la frame 60, on fixe la caméra après
-        pass
-    else:
-        print("   ⚠️ Aucune caméra trouvée !")
+        print(f"   ✅ Caméra active: {camera.name}")
+        return camera
+    
+    # Chercher n'importe quelle caméra
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'CAMERA':
+            bpy.context.scene.camera = obj
+            print(f"   ✅ Caméra trouvée: {obj.name}")
+            return obj
+    
+    print(f"   ⚠️ Aucune caméra trouvée")
+    return None
 
 
-def setup_render_settings(output_path):
+def setup_render():
     """Configure les paramètres de rendu"""
-    print("🎬 Configuration rendu...")
+    print(f"\n🎬 Configuration rendu...")
+    
+    # Créer le dossier de sortie si nécessaire
+    output_dir = os.path.dirname(OUTPUT_FILE)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"   Dossier créé: {output_dir}")
     
     # Format vidéo
     bpy.context.scene.render.image_settings.file_format = 'FFMPEG'
     bpy.context.scene.render.ffmpeg.format = 'MPEG4'
     bpy.context.scene.render.ffmpeg.codec = 'H264'
     
-    # Résolution (vertical pour TikTok/Shorts)
+    # Résolution
     bpy.context.scene.render.resolution_x = 1080
     bpy.context.scene.render.resolution_y = 1920
     bpy.context.scene.render.resolution_percentage = 100
     
     # Fichier de sortie
-    bpy.context.scene.render.filepath = output_path
+    bpy.context.scene.render.filepath = OUTPUT_FILE
     
     print(f"   Résolution: 1080x1920")
     print(f"   Codec: H264")
-    print(f"   Sortie: {output_path}")
+    print(f"   Sortie: {OUTPUT_FILE}")
 
 
-def create_animation_sequence(kara, actions, total_frames, fps):
-    """Crée la séquence d'animations pour Kara"""
-    print("🎭 Création séquence d'animations...")
+def render():
+    """Lance le rendu"""
+    print(f"\n🎨 Lancement du rendu...")
+    print(f"   ⏳ Patience, ça peut prendre plusieurs minutes...")
     
-    if not kara or not actions:
-        print("   ⚠️ Pas de personnage ou d'actions")
-        return
-    
-    zoom_frames = int(CONFIG["camera_zoom_duration"] * fps)
-    remaining_frames = total_frames - zoom_frames
-    
-    # Séquence type pour un JT :
-    # 1. Stand To Sit (Kara s'assoit) - pendant le zoom caméra
-    # 2. Sitting Talking (Kara présente) - le reste du temps
-    
-    current_frame = 1
-    
-    # Animation 1: Stand To Sit (pendant le zoom)
-    if "stand_to_sit" in actions and actions["stand_to_sit"]:
-        action = actions["stand_to_sit"]
-        duration = action.frame_range[1] - action.frame_range[0]
-        print(f"   Frame {current_frame}: Stand To Sit ({duration} frames)")
+    try:
+        # Rendu de l'animation
+        bpy.ops.render.render(animation=True, write_still=True)
+        print(f"   ✅ Rendu terminé !")
         
-        # Assigner l'action
-        if kara.animation_data:
-            kara.animation_data.action = action
+        # Vérifier le fichier
+        if os.path.exists(OUTPUT_FILE):
+            size = os.path.getsize(OUTPUT_FILE) / (1024 * 1024)
+            print(f"   📁 Fichier: {OUTPUT_FILE}")
+            print(f"   📊 Taille: {size:.2f} MB")
         else:
-            kara.animation_data_create()
-            kara.animation_data.action = action
-        
-        current_frame += int(duration)
-    
-    # Animation 2: Sitting Talking (le reste du JT)
-    if "sitting_talking" in actions and actions["sitting_talking"]:
-        action = actions["sitting_talking"]
-        print(f"   Frame {current_frame} à {total_frames}: Sitting Talking (loop)")
-        
-        # Créer une boucle de l'animation pour toute la durée
-        # On utilise le NLA pour ça
-        # Pour faire simple: on étend l'action
-        
-        # Alternative simple: répéter l'animation manuellement avec des keyframes
-        # Ou utiliser le NLA Editor pour mixer les animations
-        pass
-    
-    print("   ✅ Séquence créée")
-
-
-def render_animation():
-    """Lance le rendu de l'animation"""
-    print("🎨 Lancement du rendu...")
-    print("   ⏳ Cela peut prendre plusieurs minutes...")
-    
-    # Rendu de l'animation
-    bpy.ops.render.render(animation=True)
-    
-    print("   ✅ Rendu terminé !")
+            print(f"   ⚠️ Fichier non créé: {OUTPUT_FILE}")
+            
+    except Exception as e:
+        print(f"   ❌ Erreur rendu: {e}")
 
 
 # ============================================================
@@ -307,52 +293,48 @@ def render_animation():
 # ============================================================
 
 def main():
-    """Fonction principale - exécutée par Blender"""
+    """Fonction principale"""
+    print("\n" + "=" * 60)
+    print("🎬 BLENDER SCRIPT - DÉBUT")
     print("=" * 60)
-    print("🎬 BLENDER SCRIPT - JT 3D AUTOMATION")
-    print("=" * 60)
     
-    # 1. Nettoyer
-    clear_scene()
+    try:
+        # 1. Vérifier les fichiers
+        check_files()
+        
+        # 2. Nettoyer
+        clear_scene()
+        
+        # 3. Importer Kara
+        kara = import_kara()
+        
+        # 4. Calculer la durée
+        duration = get_audio_duration()
+        
+        # 5. Configurer la timeline
+        total_frames = setup_timeline(duration)
+        
+        # 6. Ajouter l'audio
+        add_audio()
+        
+        # 7. Trouver la caméra
+        find_camera()
+        
+        # 8. Configurer le rendu
+        setup_render()
+        
+        # 9. Lancer le rendu
+        render()
+        
+    except Exception as e:
+        print(f"\n❌ ERREUR: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # 2. Importer Kara
-    kara = import_kara(CONFIG["kara_fbx"])
-    if kara:
-        position_kara(kara)
-    
-    # 3. Charger les animations
-    actions = {}
-    for anim_name, anim_path in CONFIG["animations"].items():
-        action = load_animation(anim_name, anim_path)
-        if action:
-            actions[anim_name] = action
-    
-    # 4. Calculer la durée de l'audio
-    audio_duration = get_audio_duration(CONFIG["audio_file"])
-    
-    # 5. Configurer la timeline
-    total_frames = setup_timeline(audio_duration, CONFIG["fps"])
-    
-    # 6. Ajouter l'audio
-    add_audio_to_scene(CONFIG["audio_file"])
-    
-    # 7. Configurer la caméra
-    setup_camera_animation(audio_duration, CONFIG["fps"])
-    
-    # 8. Créer la séquence d'animations
-    create_animation_sequence(kara, actions, total_frames, CONFIG["fps"])
-    
-    # 9. Configurer le rendu
-    setup_render_settings(CONFIG["output_file"])
-    
-    # 10. Lancer le rendu
-    render_animation()
-    
-    print("=" * 60)
-    print("✅ BLENDER SCRIPT TERMINÉ")
+    print("\n" + "=" * 60)
+    print("🎬 BLENDER SCRIPT - FIN")
     print("=" * 60)
 
 
-# Exécuter si appelé directement
-if __name__ == "__main__":
-    main()
+# Exécuter
+main()

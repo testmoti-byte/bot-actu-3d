@@ -263,11 +263,19 @@ class BlenderOracle:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
-                text=True,
+                text=False,  # Binaire pour éviter erreur encodage Windows
                 env=env,
                 timeout=1800,  # 30 minutes max
                 cwd=self.project_root
             )
+            
+            # Décoder la sortie avec gestion d'erreur
+            try:
+                stdout_text = result.stdout.decode('utf-8', errors='replace')
+                stderr_text = result.stderr.decode('utf-8', errors='replace')
+            except:
+                stdout_text = str(result.stdout)
+                stderr_text = str(result.stderr)
             
             # Analyser le résultat
             if result.returncode == 0:
@@ -287,10 +295,13 @@ class BlenderOracle:
                     return output_file
                 else:
                     logger.error(f"❌ Fichier de sortie non créé: {output_file}")
+                    # Afficher les logs Blender pour debug
+                    if stderr_text:
+                        logger.error(f"Blender STDERR: {stderr_text[:2000]}")
                     return self._create_error_video(output_file, "Output not created")
             else:
                 logger.error(f"❌ Blender a échoué (code: {result.returncode})")
-                logger.error(f"STDERR: {result.stderr[:1000]}")
+                logger.error(f"STDERR: {stderr_text[:1000]}")
                 return self._create_error_video(output_file, f"Blender error: {result.returncode}")
         
         except subprocess.TimeoutExpired:
