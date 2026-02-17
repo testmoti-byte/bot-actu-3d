@@ -253,31 +253,45 @@ def setup_render():
     bpy.context.scene.render.resolution_y = 1920
     bpy.context.scene.render.resolution_percentage = 100
     
-    # Essayer de configurer le format vidéo
+    # Essayer de configurer le format vidéo pour Blender 5.0
     video_format_ok = False
     
+    # Méthode 1: Essayer via les préférences de sortie
     try:
-        # Blender 4.x et certains builds
+        # Pour Blender 5.0, on utilise le système de Output
         bpy.context.scene.render.image_settings.file_format = 'FFMPEG'
-        bpy.context.scene.render.ffmpeg.format = 'MPEG4'
-        bpy.context.scene.render.ffmpeg.codec = 'H264'
         video_format_ok = True
-        print(f"   Format: MP4 (H264)")
+        print(f"   Format: MP4 via FFMPEG")
     except TypeError:
-        print(f"   ⚠️ FFMPEG non disponible, on va rendre en images PNG")
+        pass
+    
+    # Méthode 2: Si FFMPEG n'est pas dispo, on vérifie les autres options
+    if not video_format_ok:
+        # Lister les formats disponibles pour debug
+        print(f"   Formats disponibles: {bpy.context.scene.render.image_settings.bl_rna.properties['file_format'].enum_items.keys()}")
+    
+    # Configurer le codec si FFMPEG est disponible
+    if video_format_ok:
+        try:
+            bpy.context.scene.render.ffmpeg.format = 'MPEG4'
+            bpy.context.scene.render.ffmpeg.codec = 'H264'
+            bpy.context.scene.render.ffmpeg.audio_codec = 'AAC'
+        except:
+            pass
     
     # Fichier de sortie
     if video_format_ok:
         bpy.context.scene.render.filepath = OUTPUT_FILE
+        print(f"   Sortie vidéo: {OUTPUT_FILE}")
     else:
-        # Rendre en images PNG, on les assemblera après
-        png_output = OUTPUT_FILE.replace('.mp4', '_')
+        # Fallback: rendre en PNG
+        png_output = OUTPUT_FILE.replace('.mp4', '_frame_')
         bpy.context.scene.render.image_settings.file_format = 'PNG'
         bpy.context.scene.render.filepath = png_output
-        print(f"   Format: PNG (images)")
+        print(f"   Sortie images: {png_output}")
+        print(f"   ⚠️ ffmpeg sera nécessaire pour créer la vidéo")
     
     print(f"   Résolution: 1080x1920")
-    print(f"   Sortie: {bpy.context.scene.render.filepath}")
 
 
 def render():
