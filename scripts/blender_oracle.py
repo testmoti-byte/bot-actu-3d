@@ -65,7 +65,8 @@ class BlenderOracle:
         
         # Chemins possibles
         possible_paths = [
-            # Windows (le plus probable en premier)
+            # Windows - Blender 5.0 (trouvé sur ta machine)
+            r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe",
             r"C:\Program Files\Blender Foundation\Blender 4.0\blender.exe",
             r"C:\Program Files\Blender Foundation\Blender 3.6\blender.exe",
             r"C:\Program Files\Blender Foundation\Blender 4.1\blender.exe",
@@ -122,10 +123,17 @@ class BlenderOracle:
     def _find_blend_file(self) -> str:
         """Trouve le fichier .blend du projet"""
         
-        # Chemins possibles
+        # Chemins possibles (y compris le dossier avec le nom bizarre)
         possible_paths = [
+            # Dossier avec nom bizarre "mkdir - p blender"
+            os.path.join(self.project_root, "mkdir - p blender", "jt_test.blend"),
+            os.path.join(self.project_root, "mkdir-p blender", "jt_test.blend"),
+            os.path.join(self.project_root, "mkdir -p blender", "jt_test.blend"),
+            # Dossier normal "blender"
             os.path.join(self.project_root, "blender", "jt_test.blend"),
+            # À la racine
             os.path.join(self.project_root, "jt_test.blend"),
+            # Autres noms possibles
             os.path.join(self.project_root, "blender", "jt_studio.blend"),
         ]
         
@@ -134,7 +142,14 @@ class BlenderOracle:
                 logger.info(f"✅ Fichier .blend trouvé: {path}")
                 return path
         
-        # Par défaut
+        # Par défaut - on essaie de trouver le dossier qui existe
+        for path in possible_paths:
+            folder = os.path.dirname(path)
+            if os.path.exists(folder):
+                logger.warning(f"⚠️ Dossier trouvé mais pas le .blend: {folder}")
+                return path
+        
+        # Dernier recours
         default_path = os.path.join(self.project_root, "blender", "jt_test.blend")
         logger.warning(f"⚠️ Fichier .blend non trouvé, utilisation: {default_path}")
         return default_path
