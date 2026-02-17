@@ -60,33 +60,53 @@ class BlenderOracle:
     def _find_blender(self) -> str:
         """Trouve l'exécutable Blender"""
         
+        import platform
+        is_windows = platform.system() == "Windows"
+        
         # Chemins possibles
         possible_paths = [
+            # Windows (le plus probable en premier)
+            r"C:\Program Files\Blender Foundation\Blender 4.0\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 3.6\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 4.1\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender\blender.exe",
+            r"C:\Program Files (x86)\Blender Foundation\Blender\blender.exe",
+            
             # Linux
             "/usr/bin/blender",
             "/usr/local/bin/blender",
             "/opt/blender/blender",
+            "/snap/bin/blender",
             
             # macOS
             "/Applications/Blender.app/Contents/MacOS/Blender",
-            
-            # Windows
-            r"C:\Program Files\Blender Foundation\Blender 4.0\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender 3.6\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender\blender.exe",
-            r"C:\Program Files (x86)\Blender Foundation\Blender\blender.exe",
         ]
         
-        # D'abord essayer dans le PATH
-        result = subprocess.run(
-            ["which", "blender"], 
-            capture_output=True, 
-            text=True
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            path = result.stdout.strip()
-            logger.info(f"✅ Blender trouvé dans PATH: {path}")
-            return path
+        # Essayer de trouver Blender dans le PATH
+        try:
+            if is_windows:
+                # Sur Windows, utiliser 'where'
+                result = subprocess.run(
+                    ["where", "blender"], 
+                    capture_output=True, 
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+            else:
+                # Sur Linux/Mac, utiliser 'which'
+                result = subprocess.run(
+                    ["which", "blender"], 
+                    capture_output=True, 
+                    text=True
+                )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                path = result.stdout.strip().split('\n')[0]  # Premier résultat
+                logger.info(f"✅ Blender trouvé dans PATH: {path}")
+                return path
+        except Exception:
+            pass  # Ignorer les erreurs et continuer
         
         # Chercher dans les chemins connus
         for path in possible_paths:
@@ -95,7 +115,8 @@ class BlenderOracle:
                 return path
         
         # Par défaut, utiliser "blender" et croiser les doigts
-        logger.warning("⚠️ Blender non trouvé, utilisation de 'blender'")
+        logger.warning("⚠️ Blender non trouvé automatiquement")
+        logger.warning("⚠️ Veuillez spécifier le chemin manuellement dans le script")
         return "blender"
     
     def _find_blend_file(self) -> str:
