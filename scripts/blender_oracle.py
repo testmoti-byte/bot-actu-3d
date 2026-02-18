@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Blender Oracle - Le chef d'orchestre
-Lance Blender en mode headless (sans interface) avec le script de rendu
+Blender Oracle - Version Complète avec Assemblage FFmpeg
+Orchestre le rendu Blender headless et assemble la vidéo finale
 
-Fonctionnalités :
+Fonctionnalités:
 - Trouve Blender automatiquement
-- Calcule les paramètres nécessaires
-- Lance le rendu en arrière-plan
-- Gère les erreurs
+- Lance le rendu en headless
+- Assemble les frames PNG en vidéo MP4 avec ffmpeg
+- Génère un nom de fichier unique avec date/heure
 """
 
 import os
 import sys
 import subprocess
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
-import json
 
 # Configuration du logging
 logging.basicConfig(
@@ -27,420 +27,351 @@ logger = logging.getLogger(__name__)
 
 
 class BlenderOracle:
-    """
-    Orchestre le rendu Blender automatique
-    Travaille en tandem avec blender_script.py
-    """
+    """Orchestre le rendu Blender complet"""
     
-    def __init__(self, project_root: str = None):
-        """
-        Initialise Blender Oracle
-        
-        Args:
-            project_root: Dossier racine du projet (optionnel)
-        """
-        self.project_root = project_root or os.getcwd()
-        
-        # Trouver Blender
+    def __init__(self):
+        """Initialise Blender Oracle"""
         self.blender_path = self._find_blender()
+        self.ffmpeg_path = self._find_ffmpeg()
         
-        # Trouver le fichier .blend
-        self.blend_file = self._find_blend_file()
+        # Chemins possibles pour le fichier .blend (recherche dans l'ordre)
+        self.possible_blend_paths = [
+            "blender/jt_test.blend",
+            "mkdir - p blender/jt_test.blend",  # Dossier avec nom bizarre
+            "jt_test.blend",
+            "../blender/jt_test.blend",
+            "../mkdir - p blender/jt_test.blend",
+        ]
         
-        # Trouver le script Blender
-        self.blender_script = self._find_blender_script()
+        # Trouve le premier chemin qui existe
+        self.project_file = None
+        for path in self.possible_blend_paths:
+            if os.path.exists(path):
+                self.project_file = os.path.abspath(path)
+                logger.info(f"✅ Fichier .blend trouvé: {path}")
+                break
         
-        logger.info("=" * 50)
+        if not self.project_file:
+            self.project_file = "blender/jt_test.blend"
+            logger.warning(f"⚠️ Fichier .blend non trouvé, utilisera: {self.project_file}")
+        
+        # Chemin du script Blender
+        self.blender_script = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "blender_script.py"
+        )
+        
         logger.info("⭐ BLENDER ORACLE INITIALIZED")
         logger.info(f"   Blender: {self.blender_path}")
-        logger.info(f"   Projet .blend: {self.blend_file}")
+        logger.info(f"   FFmpeg: {self.ffmpeg_path}")
+        logger.info(f"   Project: {self.project_file}")
         logger.info(f"   Script: {self.blender_script}")
-        logger.info("=" * 50)
     
-    def _find_blender(self) -> str:
+    def _find_blender(self):
         """Trouve l'exécutable Blender"""
+        # D'abord vérifier la variable d'environnement
+        env_path = os.environ.get("BLENDER_PATH")
+        if env_path and os.path.exists(env_path):
+            return env_path
         
-        import platform
-        is_windows = platform.system() == "Windows"
+        # Chercher dans PATH
+        blender = shutil.which("blender")
+        if blender:
+            return blender
         
-        # Chemins possibles
-        possible_paths = [
-            # Windows - Blender 5.0 (trouvé sur ta machine)
-            r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender 4.0\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender 3.6\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender 4.1\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe",
-            r"C:\Program Files\Blender Foundation\Blender\blender.exe",
-            r"C:\Program Files (x86)\Blender Foundation\Blender\blender.exe",
-            
-            # Linux
+        # Chemins Windows courants
+        windows_paths = [
+            "C:\\Program Files\\Blender Foundation\\Blender 5.0\\blender.exe",
+            "C:\\Program Files\\Blender Foundation\\Blender 4.0\\blender.exe",
+            "C:\\Program Files\\Blender Foundation\\Blender 3.6\\blender.exe",
+            "C:\\Program Files\\Blender Foundation\\Blender\\blender.exe",
+            "C:\\Program Files (x86)\\Blender Foundation\\Blender\\blender.exe",
+        ]
+        
+        for path in windows_paths:
+            if os.path.exists(path):
+                return path
+        
+        # Chemins Linux/Mac
+        unix_paths = [
             "/usr/bin/blender",
             "/usr/local/bin/blender",
-            "/opt/blender/blender",
-            "/snap/bin/blender",
-            
-            # macOS
             "/Applications/Blender.app/Contents/MacOS/Blender",
         ]
         
-        # Essayer de trouver Blender dans le PATH
-        try:
-            if is_windows:
-                # Sur Windows, utiliser 'where'
-                result = subprocess.run(
-                    ["where", "blender"], 
-                    capture_output=True, 
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-            else:
-                # Sur Linux/Mac, utiliser 'which'
-                result = subprocess.run(
-                    ["which", "blender"], 
-                    capture_output=True, 
-                    text=True
-                )
-            
-            if result.returncode == 0 and result.stdout.strip():
-                path = result.stdout.strip().split('\n')[0]  # Premier résultat
-                logger.info(f"✅ Blender trouvé dans PATH: {path}")
-                return path
-        except Exception:
-            pass  # Ignorer les erreurs et continuer
-        
-        # Chercher dans les chemins connus
-        for path in possible_paths:
+        for path in unix_paths:
             if os.path.exists(path):
-                logger.info(f"✅ Blender trouvé: {path}")
                 return path
         
-        # Par défaut, utiliser "blender" et croiser les doigts
-        logger.warning("⚠️ Blender non trouvé automatiquement")
-        logger.warning("⚠️ Veuillez spécifier le chemin manuellement dans le script")
-        return "blender"
+        return "blender"  # Fallback
     
-    def _find_blend_file(self) -> str:
-        """Trouve le fichier .blend du projet"""
+    def _find_ffmpeg(self):
+        """Trouve l'exécutable FFmpeg"""
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg:
+            return ffmpeg
         
-        # Chemins possibles (y compris le dossier avec le nom bizarre)
-        possible_paths = [
-            # Dossier avec nom bizarre "mkdir - p blender"
-            os.path.join(self.project_root, "mkdir - p blender", "jt_test.blend"),
-            os.path.join(self.project_root, "mkdir-p blender", "jt_test.blend"),
-            os.path.join(self.project_root, "mkdir -p blender", "jt_test.blend"),
-            # Dossier normal "blender"
-            os.path.join(self.project_root, "blender", "jt_test.blend"),
-            # À la racine
-            os.path.join(self.project_root, "jt_test.blend"),
-            # Autres noms possibles
-            os.path.join(self.project_root, "blender", "jt_studio.blend"),
+        # Chemins Windows courants
+        windows_paths = [
+            "C:\\ffmpeg\\bin\\ffmpeg.exe",
+            "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+            os.path.expanduser("~\\ffmpeg\\bin\\ffmpeg.exe"),
         ]
         
-        for path in possible_paths:
-            if os.path.exists(path):
-                logger.info(f"✅ Fichier .blend trouvé: {path}")
-                return path
-        
-        # Par défaut - on essaie de trouver le dossier qui existe
-        for path in possible_paths:
-            folder = os.path.dirname(path)
-            if os.path.exists(folder):
-                logger.warning(f"⚠️ Dossier trouvé mais pas le .blend: {folder}")
-                return path
-        
-        # Dernier recours
-        default_path = os.path.join(self.project_root, "blender", "jt_test.blend")
-        logger.warning(f"⚠️ Fichier .blend non trouvé, utilisation: {default_path}")
-        return default_path
-    
-    def _find_blender_script(self) -> str:
-        """Trouve le script Python à exécuter dans Blender"""
-        
-        possible_paths = [
-            os.path.join(self.project_root, "scripts", "blender_script.py"),
-            os.path.join(self.project_root, "blender_script.py"),
-        ]
-        
-        for path in possible_paths:
+        for path in windows_paths:
             if os.path.exists(path):
                 return path
         
-        # Par défaut
-        return os.path.join(self.project_root, "scripts", "blender_script.py")
+        return "ffmpeg"  # Fallback
     
-    def _generate_unique_filename(self, base_dir: str = "renders", prefix: str = "jt") -> str:
-        """
-        Génère un nom de fichier unique avec la date/heure
-        
-        Format: jt_2026-02-17_20h30.mp4
-        """
-        now = datetime.now()
-        date_str = now.strftime("%Y-%m-%d")
-        time_str = now.strftime("%Hh%M")
-        
-        filename = f"{prefix}_{date_str}_{time_str}.mp4"
-        filepath = os.path.join(base_dir, filename)
-        
-        # Si le fichier existe déjà (même minute), ajouter un numéro
-        counter = 1
-        while os.path.exists(filepath):
-            filename = f"{prefix}_{date_str}_{time_str}_{counter}.mp4"
-            filepath = os.path.join(base_dir, filename)
-            counter += 1
-        
-        return filepath
+    def _generate_output_filename(self, base_name="jt_output"):
+        """Génère un nom de fichier unique avec date/heure"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{base_name}_{timestamp}.mp4"
     
-    def _assemble_video(self, png_pattern: str, output_file: str) -> str:
+    def render_jt(self, script=None, audio_file=None, output_file=None):
         """
-        Assemble les images PNG en vidéo avec ffmpeg
+        Lance le rendu Blender complet
         
         Args:
-            png_pattern: Pattern des images (ex: renders/jt_output_frame_)
-            output_file: Fichier de sortie
+            script: Dictionnaire avec durée (optionnel)
+            audio_file: Chemin vers le fichier audio (optionnel)
+            output_file: Chemin de sortie (optionnel, auto-généré si non fourni)
         
         Returns:
-            Chemin vers la vidéo créée ou None si échec
+            Chemin du fichier vidéo généré
         """
+        logger.info("🎬 BLENDER ORACLE - DÉBUT DU RENDU")
+        
+        # Générer le nom de fichier de sortie
+        if not output_file:
+            output_filename = self._generate_output_filename()
+            output_file = os.path.join("renders", output_filename)
+        
+        # Créer le dossier de sortie
+        output_dir = os.path.dirname(output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Chemin absolu pour le script
+        if not os.path.isabs(output_file):
+            output_file = os.path.abspath(output_file)
+        
+        logger.info(f"   Sortie: {output_file}")
+        
+        # Vérifier que le fichier .blend existe
+        if not os.path.exists(self.project_file):
+            logger.error(f"❌ Fichier .blend non trouvé: {self.project_file}")
+            return None
+        
+        # Vérifier que le script Blender existe
+        if not os.path.exists(self.blender_script):
+            logger.error(f"❌ Script Blender non trouvé: {self.blender_script}")
+            return None
+        
+        # Préparer les variables d'environnement
+        env = os.environ.copy()
+        if audio_file:
+            env["JT_AUDIO_FILE"] = os.path.abspath(audio_file)
+        env["JT_OUTPUT_FILE"] = output_file
+        
+        # Construire la commande Blender
+        cmd = [
+            self.blender_path,
+            "--background",           # Mode headless
+            "--factory-startup",      # Reset aux settings par défaut
+            "-noaudio",               # Pas d'audio au démarrage (on l'ajoute après)
+            self.project_file,        # Fichier .blend
+            "--python", self.blender_script,  # Script à exécuter
+        ]
+        
+        logger.info(f"🔧 Commande: {' '.join(cmd[:5])}...")
+        
         try:
-            # Le pattern ffmpeg attend un format comme: jt_output_frame_%04d.png
-            # png_pattern ressemble à: renders/jt_output_frame_
-            pattern = png_pattern + "%04d.png"
-            
-            # Commande ffmpeg
-            cmd = [
-                "ffmpeg",
-                "-y",  # Écraser si existe
-                "-framerate", "30",
-                "-i", pattern,
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",
-                output_file
-            ]
-            
-            logger.info(f"   Commande ffmpeg: {' '.join(cmd)}")
-            
+            # Exécuter Blender
             result = subprocess.run(
                 cmd,
                 capture_output=True,
-                text=True,
-                timeout=300  # 5 minutes max
-            )
-            
-            if result.returncode == 0:
-                logger.info(f"   ✅ Vidéo assemblée: {output_file}")
-                return output_file
-            else:
-                logger.error(f"   ❌ Erreur ffmpeg: {result.stderr[:500]}")
-                return None
-                
-        except FileNotFoundError:
-            logger.error("   ❌ ffmpeg non trouvé. Installez-le avec: winget install ffmpeg")
-            return None
-        except Exception as e:
-            logger.error(f"   ❌ Erreur assemblage: {e}")
-            return None
-    
-    def render_jt(
-        self, 
-        script: dict, 
-        audio_file: str, 
-        output_file: str = None  # None = génère automatiquement
-    ) -> str:
-        """
-        Lance le rendu du JT
-        
-        Args:
-            script: Le script du JT (contient durée, dialogues, etc.)
-            audio_file: Chemin vers le fichier audio MP3
-            output_file: Chemin de sortie pour la vidéo (None = auto avec date)
-        
-        Returns:
-            Chemin vers le fichier vidéo généré
-        """
-        logger.info("=" * 50)
-        logger.info("🎬 BLENDER ORACLE - RENDU JT")
-        logger.info("=" * 50)
-        
-        start_time = datetime.now()
-        
-        # Générer un nom de fichier unique si non spécifié
-        if output_file is None:
-            output_file = self._generate_unique_filename()
-            logger.info(f"📁 Fichier de sortie auto: {output_file}")
-        
-        try:
-            # Vérifier les fichiers nécessaires
-            if not os.path.exists(self.blend_file):
-                logger.error(f"❌ Fichier .blend non trouvé: {self.blend_file}")
-                return self._create_error_video(output_file, "Blend file not found")
-            
-            if not os.path.exists(self.blender_script):
-                logger.error(f"❌ Script Blender non trouvé: {self.blender_script}")
-                return self._create_error_video(output_file, "Blender script not found")
-            
-            # Créer le dossier de sortie
-            output_dir = os.path.dirname(output_file)
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
-            
-            # Préparer la commande Blender
-            cmd = [
-                self.blender_path,
-                "--background",           # Mode sans interface
-                "--factory-startup",      # Config par défaut (évite conflits)
-                self.blend_file,          # Le fichier .blend
-                "--python",               # Exécuter un script Python
-                self.blender_script,      # Le script à exécuter
-            ]
-            
-            # Passer des paramètres au script via variables d'environnement
-            env = os.environ.copy()
-            env["JT_AUDIO_FILE"] = os.path.abspath(audio_file) if audio_file else ""
-            env["JT_OUTPUT_FILE"] = os.path.abspath(output_file)
-            env["JT_SCRIPT_JSON"] = str(script) if script else "{}"
-            
-            logger.info(f"📝 Commande Blender:")
-            logger.info(f"   {' '.join(cmd)}")
-            logger.info(f"")
-            logger.info(f"🎵 Audio: {audio_file}")
-            logger.info(f"📁 Sortie: {output_file}")
-            logger.info(f"")
-            logger.info(f"⏳ Rendu en cours... (patience, ça peut prendre 10-30 min)")
-            logger.info(f"")
-            
-            # Lancer Blender
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=False,  # Binaire pour éviter erreur encodage Windows
-                env=env,
                 timeout=1800,  # 30 minutes max
-                cwd=self.project_root
+                env=env,
+                cwd=os.path.dirname(self.project_file) or os.getcwd()
             )
             
-            # Décoder la sortie avec gestion d'erreur
-            try:
+            # Logger la sortie
+            if result.stdout:
                 stdout_text = result.stdout.decode('utf-8', errors='replace')
-                stderr_text = result.stderr.decode('utf-8', errors='replace')
-            except:
-                stdout_text = str(result.stdout)
-                stderr_text = str(result.stderr)
+                for line in stdout_text.split('\n'):
+                    if line.strip():
+                        logger.info(f"   [Blender] {line}")
             
-            # Analyser le résultat
-            if result.returncode == 0:
-                logger.info("✅ Blender terminé avec succès !")
-                
-                # Vérifier si des images PNG ont été créées (Blender 5.0 fallback)
-                png_pattern = output_file.replace('.mp4', '_frame_')
-                png_files = []
-                
-                # Chercher les fichiers PNG
-                output_dir = os.path.dirname(output_file) or 'renders'
-                if os.path.exists(output_dir):
-                    for f in os.listdir(output_dir):
-                        if f.endswith('.png') and '_frame_' in f:
-                            png_files.append(os.path.join(output_dir, f))
-                
-                # Si des PNG existent, on doit les assembler avec ffmpeg
-                if png_files and not os.path.exists(output_file):
-                    logger.info(f"📹 {len(png_files)} images trouvées, assemblage avec ffmpeg...")
-                    video_file = self._assemble_video(png_pattern, output_file)
-                    if video_file:
-                        output_file = video_file
-                
-                # Vérifier que le fichier existe
-                if os.path.exists(output_file):
-                    file_size = os.path.getsize(output_file) / (1024 * 1024)  # MB
-                    duration = (datetime.now() - start_time).total_seconds()
-                    
-                    logger.info(f"")
-                    logger.info(f"🎉 VIDÉO GÉNÉRÉE !")
-                    logger.info(f"   Fichier: {output_file}")
-                    logger.info(f"   Taille: {file_size:.2f} MB")
-                    logger.info(f"   Temps: {duration:.1f} secondes")
-                    
-                    return output_file
-                else:
-                    logger.error(f"❌ Fichier de sortie non créé: {output_file}")
-                    # Afficher les logs Blender pour debug
-                    if stderr_text:
-                        logger.error(f"Blender STDERR: {stderr_text[:2000]}")
-                    return self._create_error_video(output_file, "Output not created")
-            else:
-                logger.error(f"❌ Blender a échoué (code: {result.returncode})")
-                logger.error(f"STDERR: {stderr_text[:1000]}")
-                return self._create_error_video(output_file, f"Blender error: {result.returncode}")
-        
+            if result.stderr:
+                stderr_text = result.stderr.decode('utf-8', errors='replace')
+                for line in stderr_text.split('\n'):
+                    if line.strip() and not 'Warning' in line:
+                        logger.warning(f"   [Blender] {line}")
+            
+            if result.returncode != 0:
+                logger.warning(f"⚠️ Blender retour code: {result.returncode}")
+            
         except subprocess.TimeoutExpired:
             logger.error("❌ Timeout: Le rendu a pris plus de 30 minutes")
-            return self._create_error_video(output_file, "Render timeout")
-        
+            return None
         except FileNotFoundError:
             logger.error(f"❌ Blender non trouvé: {self.blender_path}")
-            return self._create_error_video(output_file, "Blender not found")
-        
+            return None
         except Exception as e:
-            logger.error(f"❌ Erreur inattendue: {e}")
-            return self._create_error_video(output_file, str(e))
+            logger.error(f"❌ Erreur: {e}")
+            return None
+        
+        # Vérifier si la vidéo a été créée directement
+        if os.path.exists(output_file):
+            logger.info(f"✅ Vidéo créée: {output_file}")
+            return output_file
+        
+        # Sinon, chercher les frames PNG et assembler avec ffmpeg
+        frames_dir = os.path.dirname(output_file)
+        frames_pattern = os.path.join(frames_dir, "jt_output_frame_*.png")
+        
+        import glob
+        frames = sorted(glob.glob(frames_pattern))
+        
+        if frames:
+            logger.info(f"📦 {len(frames)} frames PNG trouvées, assemblage avec ffmpeg...")
+            return self._assemble_video(frames, output_file, audio_file)
+        
+        logger.error("❌ Aucune sortie trouvée (ni vidéo ni frames)")
+        return None
     
-    def _create_error_video(self, output_file: str, error_message: str) -> str:
+    def _assemble_video(self, frames, output_file, audio_file=None):
         """
-        Crée une vidéo d'erreur minimale
-        (pour que le pipeline continue)
-        """
-        try:
-            output_dir = os.path.dirname(output_file)
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
-            
-            # Créer un fichier MP4 minimal
-            # Note: Ce n'est pas une vraie vidéo, juste un placeholder
-            with open(output_file, 'wb') as f:
-                # En-tête MP4 minimal
-                f.write(b'\x00\x00\x00\x1cftypisom')
-                f.write(b'\x00\x00\x00\x08free')
-                f.write(b'\x00' * 1000)
-            
-            logger.warning(f"⚠️ Vidéo d'erreur créée: {output_file}")
-            logger.warning(f"   Raison: {error_message}")
-            
-            return output_file
+        Assemble les frames PNG en vidéo avec ffmpeg
         
+        Args:
+            frames: Liste des chemins des frames PNG
+            output_file: Chemin de sortie pour la vidéo
+            audio_file: Chemin vers le fichier audio (optionnel)
+        
+        Returns:
+            Chemin du fichier vidéo généré
+        """
+        if not frames:
+            logger.error("❌ Pas de frames à assembler")
+            return None
+        
+        # Répertoire des frames
+        frames_dir = os.path.dirname(frames[0])
+        
+        # Pattern pour ffmpeg
+        frames_input = os.path.join(frames_dir, "jt_output_frame_%04d.png")
+        
+        # Commande ffmpeg de base
+        cmd = [
+            self.ffmpeg_path,
+            "-y",  # Overwrite
+            "-framerate", "30",
+            "-i", frames_input,
+        ]
+        
+        # Ajouter l'audio si disponible
+        if audio_file and os.path.exists(audio_file):
+            cmd.extend(["-i", audio_file])
+            # Mapper les flux
+            cmd.extend([
+                "-map", "0:v",  # Vidéo depuis les frames
+                "-map", "1:a",  # Audio depuis le fichier audio
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "23",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-shortest",  # Arrêter quand le plus court finit
+            ])
+        else:
+            cmd.extend([
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "23",
+            ])
+        
+        # Pixel format et sortie
+        cmd.extend([
+            "-pix_fmt", "yuv420p",
+            output_file
+        ])
+        
+        logger.info(f"🔧 Commande ffmpeg: {' '.join(cmd)}")
+        
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=600,  # 10 minutes max
+                text=True
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"❌ Erreur ffmpeg: {result.stderr}")
+                return None
+            
+            if os.path.exists(output_file):
+                logger.info(f"✅ Vidéo assemblée: {output_file}")
+                
+                # Nettoyer les frames
+                self._cleanup_frames(frames)
+                
+                return output_file
+            else:
+                logger.error("❌ Vidéo non créée")
+                return None
+                
+        except subprocess.TimeoutExpired:
+            logger.error("❌ Timeout ffmpeg")
+            return None
+        except FileNotFoundError:
+            logger.error(f"❌ ffmpeg non trouvé: {self.ffmpeg_path}")
+            return None
         except Exception as e:
-            logger.error(f"❌ Impossible de créer la vidéo d'erreur: {e}")
-            return output_file
+            logger.error(f"❌ Erreur assemblage: {e}")
+            return None
+    
+    def _cleanup_frames(self, frames):
+        """Supprime les frames PNG après assemblage"""
+        logger.info(f"🧹 Nettoyage de {len(frames)} frames...")
+        for frame in frames:
+            try:
+                os.remove(frame)
+            except:
+                pass
 
 
-# ============================================================
-# TEST / UTILISATION
-# ============================================================
-
-def test_blender_oracle():
-    """Test le Blender Oracle"""
+def main():
+    """Point d'entrée principal"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Blender Oracle - Rendu JT 3D")
+    parser.add_argument("--audio", "-a", help="Fichier audio MP3")
+    parser.add_argument("--output", "-o", help="Fichier de sortie MP4")
+    parser.add_argument("--blend", "-b", help="Fichier .blend (surcharge)")
+    
+    args = parser.parse_args()
     
     oracle = BlenderOracle()
     
-    # Script fictif pour le test
-    test_script = {
-        "total_duration": 30,
-        "title": "Test JT 3D",
-        "dialogues": []
-    }
+    if args.blend:
+        oracle.project_file = args.blend
     
-    # Audio fictif
-    test_audio = "data/audio.mp3"
-    
-    # Lancer le rendu - nom de fichier automatique avec date
-    # Exemple: renders/jt_2026-02-17_20h30.mp4
     result = oracle.render_jt(
-        script=test_script,
-        audio_file=test_audio
-        # output_file non spécifié = nom automatique avec date
+        audio_file=args.audio,
+        output_file=args.output
     )
     
-    print(f"\n🎬 Résultat: {result}")
+    if result:
+        print(f"\n✅ SUCCÈS! Vidéo générée: {result}")
+        return 0
+    else:
+        print(f"\n❌ ÉCHEC du rendu")
+        return 1
 
 
 if __name__ == "__main__":
-    test_blender_oracle()
+    sys.exit(main())
