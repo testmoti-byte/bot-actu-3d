@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 JT 3D PRINTING NEWS - Ollama News Extractor
-Extrait les infos principales avec Ollama (Llama 3.1 8B local)
+Extrait les infos principales avec Ollama (Phi 3 par défaut pour la vitesse)
 """
 
 import requests
@@ -15,12 +15,13 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 class OllamaNewsExtractor:
-    """Extrait infos d'une news avec Ollama Llama 3.1"""
+    """Extrait infos d'une news avec Ollama Phi 3 (ou modèle choisi)"""
     
-    def __init__(self, host: str = "http://localhost:11434", model: str = "llama3.1:8b"):
+    def __init__(self, host: str = "http://localhost:11434", model: str = "phi3"):
         """Initialise l'extracteur Ollama"""
         self.host = host
-        self.model = model or os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+        # MODIFICATION ICI : Par défaut on utilise "phi3" (plus rapide sur CPU/HDD)
+        self.model = model or os.getenv("OLLAMA_MODEL", "phi3")
         self.api_url = f"{self.host}/api/generate"
         logger.info(f"🤖 Ollama Extractor initialized ({self.model})")
     
@@ -45,7 +46,7 @@ Please provide:
 Format JSON only."""
         
         try:
-            # Appel Ollama
+            # MODIFICATION ICI : Timeout passé à 300 secondes (5 minutes)
             response = requests.post(
                 self.api_url,
                 json={
@@ -54,7 +55,7 @@ Format JSON only."""
                     "stream": False,
                     "temperature": 0.7
                 },
-                timeout=30
+                timeout=300  # <--- 5 MINUTES
             )
             
             if response.status_code != 200:
@@ -138,10 +139,10 @@ Format JSON only."""
 class OllamaLipSyncAnalyzer:
     """Analyse le texte pour générer lip-sync et gestes"""
     
-    def __init__(self, host: str = "http://localhost:11434", model: str = "llama3.1:8b"):
+    def __init__(self, host: str = "http://localhost:11434", model: str = "phi3"):
         """Initialise l'analyseur lip-sync"""
         self.host = host
-        self.model = model
+        self.model = model # Phi 3 par défaut ici aussi
         self.api_url = f"{self.host}/api/generate"
     
     def analyze_for_animation(self, script_text: str) -> Dict:
@@ -161,6 +162,7 @@ Provide:
 Format as JSON."""
         
         try:
+            # Timeout augmenté à 300s ici aussi
             response = requests.post(
                 self.api_url,
                 json={
@@ -169,7 +171,7 @@ Format as JSON."""
                     "stream": False,
                     "temperature": 0.7
                 },
-                timeout=30
+                timeout=300 
             )
             
             if response.status_code == 200:
