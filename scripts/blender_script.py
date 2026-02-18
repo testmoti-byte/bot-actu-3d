@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Blender Script - VERSION FINALE AVEC TERMES UTILISATEUR
-Adapté pour Kara avec les termes exacts : Excited, Stand To Sit, Sitting Talking, attendre
-Rotation chaise : 140 degrés sens horaire (-140)
+Blender Script - VERSION NOMMAGE CORRECT (arma_kara)
+Recherche spécifique de l'armature 'arma_kara' pour animer Kara
 """
 
 import bpy
@@ -28,9 +27,7 @@ OUTPUT_FILE = _output_file_from_env if _output_file_from_env else os.path.join(b
 FPS = 30
 
 # --- NOMS DES ANIMATIONS (TES TERMES EXACTS) ---
-# Le script va chercher ces termes précis dans ton fichier Blend
-
-ANIM_WALK_KEYWORDS = ["Excited", "Walk", "Marche"] # On utilise "Excited" comme demande
+ANIM_WALK_KEYWORDS = ["Excited", "Walk", "Marche"]
 ANIM_SIT_KEYWORDS = ["Stand To Sit", "Sit", "Assied"]
 ANIM_TALK_KEYWORDS = ["Sitting Talking", "Talk", "Parle"]
 ANIM_IDLE_KEYWORDS = ["attendre", "Idle"]
@@ -45,34 +42,42 @@ OFFSCREEN_DISTANCE = 1500
 ARRIVAL_MODE = "random" 
 
 # --- ROTATION CHAISE ---
-# "140 degrés sens horaire" -> En Blender, sens horaire = négatif sur l'axe Z
+# -140 degrés = Sens horaire
 CHAIR_ROTATION_BASE = -140 
 
 # --- SMOOTHNESS (REBOND) ---
-# 0.05 = 5% (Très fluide et subtile)
+# 0.05 = 5% (Smooth)
 BOUNCE_AMOUNT = 0.05 
 BOUNCE_FRAMES = 15
 
 print("=" * 60)
-print("🎬 BLENDER SCRIPT - TERMES UTILISATEUR & SMOOTH CHAIR")
+print("🎬 BLENDER SCRIPT - CIBLE: ARMA_KARA")
 print("=" * 60)
 
 
 def find_all_characters():
-    """Trouve le personnage Kara"""
-    print(f"\n🔍 Recherche du personnage Kara...")
+    """
+    TROUVE L'ARMATURE 'arma_kara'
+    C'est l'objet clé qui contient les animations.
+    """
+    print(f"\n🔍 Recherche de l'armature arma_kara...")
     
     for obj in bpy.context.scene.objects:
+        # On cherche une ARMATURE qui contient "arma_kara" dans son nom
         if obj.type == 'ARMATURE':
-            if "armakara" in obj.name.lower() or "kara" in obj.name.lower():
-                print(f"   🌟 PERSONNAGE KARA TROUVÉ : {obj.name}")
+            if "arma_kara" in obj.name.lower():
+                print(f"   🌟 ARMATURE TROUVÉE : {obj.name}")
+                print(f"      📍 Position: {tuple(round(v, 2) for v in obj.location)}")
                 return [obj]
     
-    print(f"   ⚠️ Kara non trouvé, fallback...")
+    # Si on ne trouve pas arma_kara, on cherche une autre armature (Fallback)
+    print(f"   ⚠️ 'arma_kara' non trouvé, recherche d'une autre armature...")
     characters = []
     for obj in bpy.context.scene.objects:
         if obj.type == 'ARMATURE' and len(obj.pose.bones) > 10:
             characters.append(obj)
+            print(f"   ✅ Autre armature trouvée: {obj.name}")
+    
     return characters
 
 
@@ -108,7 +113,7 @@ def calculate_scene_positions(chair, camera, arrival="random"):
         chair_rotation = CHAIR_ROTATION_BASE
     else:
         start_pos[0] += OFFSCREEN_DISTANCE
-        chair_rotation = -CHAIR_ROTATION_BASE # Inverse si arrivée droite
+        chair_rotation = -CHAIR_ROTATION_BASE 
     
     end_pos = chair_pos.copy()
     end_pos[1] += 200 
@@ -140,6 +145,7 @@ def position_character(character, start_pos):
     character.location = start_pos
     character.hide_render = False
     character.hide_viewport = False
+    print(f"   ✅ Positionné")
 
 
 def setup_head_tracking(character, camera):
@@ -174,24 +180,16 @@ def animate_chair_smart(chair, rotation_deg, start_frame, duration_frames):
     bounce_frame = end_frame + BOUNCE_FRAMES
     initial_z = chair.rotation_euler[2]
     
-    # Keyframe départ
     chair.keyframe_insert(data_path="rotation_euler", frame=start_frame - 1)
     
-    # Rotation cible
     target_z = initial_z + math.radians(rotation_deg)
     chair.rotation_euler = (chair.rotation_euler[0], chair.rotation_euler[1], target_z)
     chair.keyframe_insert(data_path="rotation_euler", frame=end_frame)
     
-    # Petit rebond smooth (5%)
     over_rotate = math.radians(rotation_deg * BOUNCE_AMOUNT)
-    chair.rotation_euler = (
-        chair.rotation_euler[0], 
-        chair.rotation_euler[1], 
-        target_z + over_rotate
-    )
+    chair.rotation_euler = (chair.rotation_euler[0], chair.rotation_euler[1], target_z + over_rotate)
     chair.keyframe_insert(data_path="rotation_euler", frame=end_frame + BOUNCE_FRAMES // 2)
     
-    # Retour cible
     chair.rotation_euler = (chair.rotation_euler[0], chair.rotation_euler[1], target_z)
     chair.keyframe_insert(data_path="rotation_euler", frame=bounce_frame)
     
@@ -267,7 +265,7 @@ def hide_other_characters(characters, selected):
 
 def main():
     print("\n" + "=" * 60)
-    print("🎬 DÉMARRAGE")
+    print("🎬 DÉMARRAGE SCRIPT (CIBLE: ARMA_KARA)")
     print("=" * 60)
     
     try:
@@ -275,8 +273,12 @@ def main():
         chair = find_chair()
         camera = find_camera()
         
-        if not characters: return
-        if not chair: return
+        if not characters: 
+            print("❌ Aucune armature trouvée !")
+            return
+        if not chair: 
+            print("❌ Pas de chaise !")
+            return
         
         character = characters[0]
         hide_other_characters(characters, character)
@@ -290,7 +292,7 @@ def main():
         
         current_frame = 1
         
-        # 1. EXCITED (Walk)
+        # 1. EXCITED
         walk_end = current_frame + int(WALK_DURATION * FPS)
         create_walk_animation(character, positions["start_pos"], positions["end_pos"], current_frame, walk_end)
         current_frame = walk_end
