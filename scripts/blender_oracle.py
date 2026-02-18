@@ -34,10 +34,11 @@ class BlenderOracle:
         self.blender_path = self._find_blender()
         self.ffmpeg_path = self._find_ffmpeg()
         
-        # Chemins possibles pour le fichier .blend (recherche dans l'ordre)
+        # Chemins possibles pour le fichier .blend
         self.possible_blend_paths = [
             "blender/jt_test.blend",
-            "mkdir - p blender/jt_test.blend",  # Dossier avec nom bizarre
+            "mkdir - p blender/jt_test.blend",
+            "mkdir -p blender/jt_test.blend",
             "jt_test.blend",
             "../blender/jt_test.blend",
             "../mkdir - p blender/jt_test.blend",
@@ -51,9 +52,20 @@ class BlenderOracle:
                 logger.info(f"✅ Fichier .blend trouvé: {path}")
                 break
         
+        # Si toujours pas trouvé, chercher automatiquement
         if not self.project_file:
-            self.project_file = "blender/jt_test.blend"
-            logger.warning(f"⚠️ Fichier .blend non trouvé, utilisera: {self.project_file}")
+            import glob
+            # Chercher tous les fichiers .blend dans le dossier courant et sous-dossiers
+            blend_files = glob.glob("**/*.blend", recursive=True)
+            # Exclure les fichiers de backup
+            blend_files = [f for f in blend_files if not "backup" in f.lower()]
+            
+            if blend_files:
+                self.project_file = os.path.abspath(blend_files[0])
+                logger.info(f"✅ Fichier .blend trouvé automatiquement: {blend_files[0]}")
+            else:
+                self.project_file = "blender/jt_test.blend"
+                logger.warning(f"⚠️ Fichier .blend non trouvé, utilisera: {self.project_file}")
         
         # Chemin du script Blender
         self.blender_script = os.path.join(
