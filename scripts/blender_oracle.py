@@ -191,6 +191,56 @@ class BlenderOracle:
         
         return filepath
     
+    def _assemble_video(self, png_pattern: str, output_file: str) -> str:
+        """
+        Assemble les images PNG en vidéo avec ffmpeg
+        
+        Args:
+            png_pattern: Pattern des images (ex: renders/jt_output_frame_)
+            output_file: Fichier de sortie
+        
+        Returns:
+            Chemin vers la vidéo créée ou None si échec
+        """
+        try:
+            # Le pattern ffmpeg attend un format comme: jt_output_frame_%04d.png
+            # png_pattern ressemble à: renders/jt_output_frame_
+            pattern = png_pattern + "%04d.png"
+            
+            # Commande ffmpeg
+            cmd = [
+                "ffmpeg",
+                "-y",  # Écraser si existe
+                "-framerate", "30",
+                "-i", pattern,
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                output_file
+            ]
+            
+            logger.info(f"   Commande ffmpeg: {' '.join(cmd)}")
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minutes max
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"   ✅ Vidéo assemblée: {output_file}")
+                return output_file
+            else:
+                logger.error(f"   ❌ Erreur ffmpeg: {result.stderr[:500]}")
+                return None
+                
+        except FileNotFoundError:
+            logger.error("   ❌ ffmpeg non trouvé. Installez-le avec: winget install ffmpeg")
+            return None
+        except Exception as e:
+            logger.error(f"   ❌ Erreur assemblage: {e}")
+            return None
+    
     def render_jt(
         self, 
         script: dict, 
@@ -280,6 +330,24 @@ class BlenderOracle:
             # Analyser le résultat
             if result.returncode == 0:
                 logger.info("✅ Blender terminé avec succès !")
+                
+                # Vérifier si des images PNG ont été créées (Blender 5.0 fallback)
+                png_pattern = output_file.replace('.mp4', '_frame_')
+                png_files = []
+                
+                # Chercher les fichiers PNG
+                output_dir = os.path.dirname(output_file) or 'renders'
+                if os.path.exists(output_dir):
+                    for f in os.listdir(output_dir):
+                        if f.endswith('.png') and '_frame_' in f:
+                            png_files.append(os.path.join(output_dir, f))
+                
+                # Si des PNG existent, on doit les assembler avec ffmpeg
+                if png_files and not os.path.exists(output_file):
+                    logger.info(f"📹 {len(png_files)} images trouvées, assemblage avec ffmpeg...")
+                    video_file = self._assemble_video(png_pattern, output_file)
+                    if video_file:
+                        output_file = video_file
                 
                 # Vérifier que le fichier existe
                 if os.path.exists(output_file):
