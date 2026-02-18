@@ -119,6 +119,16 @@ def import_kara():
                 if obj.type == 'ARMATURE' or obj.type == 'MESH':
                     obj.name = "Kara"
                     print(f"   ✅ Kara importée: {obj.name}")
+                    
+                    # CORRECTION ÉCHELLE : Si le studio est en mm et Kara en m
+                    # Agrandir Kara 1000x (ou ajuster selon besoin)
+                    obj.scale = (1000.0, 1000.0, 1000.0)
+                    print(f"   📏 Échelle corrigée: x1000 (mm vs m)")
+                    
+                    # Positionner Kara
+                    obj.location = (0.0, 0.0, 0.0)
+                    print(f"   📍 Position: {obj.location}")
+                    
                     return obj
         
         print("   ⚠️ Objet non trouvé après import")
