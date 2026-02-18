@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-Blender Script - VERSION CORRIGÉE AXES FBX
-S'exécute DANS Blender
+Blender Script - VERSION FINALE COMPLETE
+Les personnages et animations sont DÉJÀ dans le .blend
 
-Corrections:
-- Axes FBX : Forward=-Y, Up=Z (format Mixamo vers Blender)
-- Scale armature synchronisé avec mesh
+Fonctionnalités:
+1. Chemin pour marcher jusqu'à la chaise
+2. Enchaînement des animations (Walk → Sit → Talk)
+3. Rotation chaise sens HORAIRE (aiguilles d'une montre)
+4. Easing/balancement pour transitions fluides
+5. Tête suit la caméra
 """
 
 import bpy
 import os
 import sys
 import math
-import glob
+from math import pi
 
 # ============================================================
 # CONFIGURATION
@@ -24,200 +27,246 @@ _output_file_from_env = os.environ.get("JT_OUTPUT_FILE", "")
 blend_dir = os.path.dirname(bpy.data.filepath) if bpy.data.filepath else os.getcwd()
 print(f"📁 Dossier du .blend: {blend_dir}")
 
-ANIMATIONS_DIR = os.path.join(blend_dir, "animations")
 AUDIO_FILE = _audio_file_from_env if _audio_file_from_env else os.path.join(blend_dir, "data", "audio.mp3")
 OUTPUT_FILE = _output_file_from_env if _output_file_from_env else os.path.join(blend_dir, "renders", "jt_output.mp4")
 
 FPS = 30
-CHAIR_ROTATION = 140
 
-# Position de départ
-KARA_START_POS = (-500.0, -800.0, 0.0)
-KARA_END_POS = (0.0, 0.0, 0.0)
+# Noms des animations (à ajuster selon tes noms exacts)
+ANIM_WALK = "F Walking Arc Left"      # Marche
+ANIM_SIT = "F Stand To Sit"           # S'assoit
+ANIM_TALK = "F Sitting Talking"       # Parle assis
+ANIM_IDLE = "F attendre"              # Attente
 
-WALK_DURATION = 2.0
-SIT_DURATION = 2.0
-CHAIR_TURN_TIME = 0.5
+# Durées (en secondes)
+WALK_DURATION = 3.0
+SIT_DURATION = 2.5
+CHAIR_TURN_DURATION = 1.0
+
+# Rotation chaise (NÉGATIF = sens HORAIRE)
+CHAIR_ROTATION = -140  # degrés
+
+# Distance de marche (en unités Blender, probablement mm)
+WALK_DISTANCE = 800
+
+# Balancement (easing)
+BOUNCE_AMOUNT = 0.15   # Intensité du rebond (0.1 = 10%)
+BOUNCE_FRAMES = 15     # Durée du rebond en frames
 
 print("=" * 60)
-print("🎬 BLENDER SCRIPT - CORRECTION AXES FBX")
+print("🎬 BLENDER SCRIPT - VERSION FINALE")
 print("=" * 60)
 
 
-def find_kara_file():
-    """Trouve le fichier Kara"""
-    print(f"\n🔍 Recherche du fichier Kara...")
+def find_character():
+    """Trouve le personnage principal (armature)"""
+    print(f"\n🔍 Recherche du personnage...")
     
-    if not os.path.exists(ANIMATIONS_DIR):
-        print(f"   ❌ Dossier non trouvé")
-        return None
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'ARMATURE':
+            if len(obj.pose.bones) > 10:
+                print(f"   ✅ Trouvé: {obj.name}")
+                print(f"      📍 Location: {tuple(round(l, 2) for l in obj.location)}")
+                return obj
     
-    all_files = os.listdir(ANIMATIONS_DIR)
-    fbx_files = [f for f in all_files if f.lower().endswith('.fbx')]
-    
-    print(f"   📂 Fichiers FBX trouvés:")
-    for f in fbx_files:
-        print(f"      - {f}")
-    
-    # Exclure les animations
-    anim_kw = ["walking", "sitting", "drinking", "talking", "jog", "excited"]
-    
-    # Chercher avec "rig" (fichier de base avec squelette)
-    for f in fbx_files:
-        name_lower = f.lower()
-        if "rig" in name_lower and not any(kw in name_lower for kw in anim_kw):
-            print(f"   ✅ Trouvé (rig): {f}")
-            return os.path.join(ANIMATIONS_DIR, f)
-    
-    # Chercher Kara.fbx de base
-    for f in fbx_files:
-        name_lower = f.lower()
-        if "kara" in name_lower and not any(kw in name_lower for kw in anim_kw):
-            print(f"   ✅ Trouvé: {f}")
-            return os.path.join(ANIMATIONS_DIR, f)
-    
-    # Fallback
-    for f in fbx_files:
-        if not any(kw in f.lower() for kw in anim_kw):
-            print(f"   ⚠️ Fallback: {f}")
-            return os.path.join(ANIMATIONS_DIR, f)
-    
-    if fbx_files:
-        print(f"   ⚠️ Premier fichier: {fbx_files[0]}")
-        return os.path.join(ANIMATIONS_DIR, fbx_files[0])
-    
+    print(f"   ❌ Aucun personnage trouvé")
     return None
-
-
-def check_files():
-    """Vérifie les fichiers"""
-    print("\n📂 Vérification...")
-    if os.path.exists(ANIMATIONS_DIR):
-        for f in sorted(os.listdir(ANIMATIONS_DIR)):
-            if f.lower().endswith('.fbx'):
-                size = os.path.getsize(os.path.join(ANIMATIONS_DIR, f)) / 1024
-                print(f"   - {f} ({size:.0f} KB)")
-
-
-def clear_scene():
-    """Nettoie les anciens objets Kara"""
-    print("\n🧹 Nettoyage...")
-    for obj in list(bpy.data.objects):
-        if "kara" in obj.name.lower():
-            bpy.data.objects.remove(obj, do_unlink=True)
-            print(f"   Supprimé: {obj.name}")
-
-
-def import_kara():
-    """Importe Kara avec CORRECTION DES AXES FBX"""
-    print(f"\n📥 Import de Kara (correction axes)...")
-    
-    kara_path = find_kara_file()
-    if not kara_path:
-        return None, None
-    
-    try:
-        before_objects = set(bpy.data.objects)
-        
-        # =====================================================
-        # CORRECTION DES AXES FBX (MIXAMO → BLENDER)
-        # =====================================================
-        # Mixamo utilise: Y-up, Z-forward
-        # Blender utilise: Z-up, Y-forward
-        # Donc on importe avec: Forward=-Y, Up=Z
-        
-        bpy.ops.import_scene.fbx(
-            filepath=kara_path,
-            use_anim=True,
-            ignore_leaf_bones=False,
-            automatic_bone_orientation=True,
-            # CORRECTION AXES - CRUCIAL !
-            axis_forward='-Y',    # Mixamo: Z forward → Blender: -Y forward
-            axis_up='Z',          # Mixamo: Y up → Blender: Z up
-            global_scale=1.0,     # Pas de scale automatique
-        )
-        
-        print(f"   ✅ Importé avec axes corrigés (-Y forward, Z up)")
-        
-        after_objects = set(bpy.data.objects)
-        new_objects = after_objects - before_objects
-        
-        kara_armature = None
-        kara_meshes = []
-        
-        # Analyser les objets importés
-        for obj in new_objects:
-            print(f"\n   📦 {obj.name} (type: {obj.type})")
-            print(f"      📍 Location: {tuple(round(v, 3) for v in obj.location)}")
-            print(f"      📏 Scale: {tuple(round(v, 4) for v in obj.scale)}")
-            print(f"      🔄 Rotation: {tuple(round(math.degrees(v), 1) for v in obj.rotation_euler)}°")
-            
-            if obj.type == 'ARMATURE':
-                obj.name = "Kara_Armature"
-                kara_armature = obj
-                print(f"      ✅ Armature détectée")
-                
-            elif obj.type == 'MESH':
-                obj.name = f"Kara_Mesh_{len(kara_meshes)}"
-                kara_meshes.append(obj)
-                print(f"      ✅ Mesh détecté")
-                
-                # Afficher les dimensions
-                dims = obj.dimensions
-                print(f"      📐 Dimensions: {dims[0]:.3f} x {dims[1]:.3f} x {dims[2]:.3f} m")
-        
-        # =====================================================
-        # SYNCHRONISATION SCALE ARMATURE/MESH
-        # =====================================================
-        if kara_armature and kara_meshes:
-            arm_scale = kara_armature.scale[0]
-            mesh_scale = kara_meshes[0].scale[0]
-            
-            if abs(arm_scale - mesh_scale) > 0.01:
-                print(f"\n   ⚠️ Scale différent détecté:")
-                print(f"      Armature: {arm_scale}")
-                print(f"      Mesh: {mesh_scale}")
-                
-                # Appliquer le scale du mesh à l'armature
-                kara_armature.scale = kara_meshes[0].scale
-                print(f"      🔧 Armature ajustée au scale du mesh")
-                
-                # Vérifier le parentage
-                for mesh in kara_meshes:
-                    if mesh.parent != kara_armature:
-                        mesh.parent = kara_armature
-                        print(f"      ✅ Parentage corrigé: {mesh.name} → {kara_armature.name}")
-        
-        # Vérifier l'orientation (rotation)
-        if kara_armature:
-            rot = kara_armature.rotation_euler
-            if abs(rot[0]) > 0.1 or abs(rot[1]) > 0.1:
-                print(f"\n   ⚠️ Rotation détectée: le personnage est penché")
-                print(f"      Cela peut indiquer un problème d'axes")
-        
-        # Position de départ
-        if kara_armature:
-            kara_armature.location = KARA_START_POS
-            print(f"\n   📍 Position départ: {KARA_START_POS}")
-        
-        return kara_armature, kara_meshes[0] if kara_meshes else None
-        
-    except Exception as e:
-        print(f"   ❌ Erreur: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, None
 
 
 def find_chair():
     """Trouve la chaise"""
     print(f"\n🪑 Recherche chaise...")
+    
     for obj in bpy.context.scene.objects:
-        if any(kw in obj.name.lower() for kw in ["chaise", "chair", "seat"]):
+        name_lower = obj.name.lower()
+        if any(kw in name_lower for kw in ["chaise", "chair", "seat", "fauteuil"]):
             print(f"   ✅ Trouvée: {obj.name}")
             return obj
+    
     print(f"   ⚠️ Non trouvée")
     return None
+
+
+def find_camera():
+    """Trouve la caméra active"""
+    cam = bpy.context.scene.camera
+    if cam:
+        print(f"\n📹 Caméra: {cam.name}")
+        return cam
+    
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'CAMERA':
+            bpy.context.scene.camera = obj
+            print(f"\n📹 Caméra trouvée: {obj.name}")
+            return obj
+    
+    return None
+
+
+def get_action(name):
+    """Récupère une action par son nom (recherche flexible)"""
+    # Recherche exacte
+    if name in bpy.data.actions:
+        return bpy.data.actions[name]
+    
+    # Recherche partielle
+    for action in bpy.data.actions:
+        if name.lower() in action.name.lower():
+            print(f"   ✅ Action trouvée: {action.name}")
+            return action
+    
+    print(f"   ⚠️ Action non trouvée: {name}")
+    return None
+
+
+def setup_head_tracking(character, camera):
+    """La tête suit la caméra"""
+    print(f"\n👀 Configuration suivi de tête...")
+    
+    if not character or not camera:
+        return
+    
+    # Trouver la bone de la tête
+    head_bone = None
+    for bone in character.pose.bones:
+        name_lower = bone.name.lower()
+        if any(kw in name_lower for kw in ["head", "tête", "tete", "neck"]):
+            head_bone = bone
+            break
+    
+    if not head_bone:
+        print(f"   ⚠️ Bone tête non trouvée")
+        return
+    
+    # Supprimer ancien constraint
+    for c in head_bone.constraints:
+        if c.type == 'TRACK_TO':
+            head_bone.constraints.remove(c)
+    
+    # Ajouter Track To
+    track = head_bone.constraints.new('TRACK_TO')
+    track.target = camera
+    track.track_axis = 'TRACK_NEGATIVE_Z'
+    track.up_axis = 'UP_Y'
+    
+    print(f"   ✅ Tête suit la caméra (bone: {head_bone.name})")
+
+
+def apply_easing(fcurves, start_frame, end_frame, bounce=True):
+    """
+    Applique un easing avec rebond sur les keyframes
+    Pour que ça s'arrête pas net
+    """
+    if not bounce or not fcurves:
+        return
+    
+    for fcurve in fcurves:
+        keyframes = [k for k in fcurve.keyframe_points if start_frame <= k.co[0] <= end_frame]
+        
+        for k in keyframes:
+            # Interpolation bézier pour plus fluide
+            k.interpolation = 'BEZIER'
+            
+            # Ajouter du rebond sur les keyframes de fin
+            if k.co[0] == end_frame:
+                # Handles pour effet de rebond léger
+                k.handle_left_type = 'AUTO'
+                k.handle_right_type = 'AUTO'
+
+
+def create_walk_path(character, start_frame, end_frame):
+    """
+    Crée un chemin de marche avec mouvement naturel
+    Le personnage avance vers la chaise
+    """
+    print(f"\n🚶 Création chemin de marche...")
+    
+    if not character:
+        return
+    
+    # Position de départ
+    start_pos = character.location.copy()
+    
+    # Position d'arrivée (devant la chaise)
+    end_pos = start_pos.copy()
+    end_pos[1] += WALK_DISTANCE  # Avancer sur Y
+    
+    # Créer les keyframes de position
+    character.location = start_pos
+    character.keyframe_insert(data_path="location", frame=start_frame)
+    
+    character.location = end_pos
+    character.keyframe_insert(data_path="location", frame=end_frame)
+    
+    # Appliquer l'animation de marche
+    walk_action = get_action(ANIM_WALK)
+    if walk_action and character.animation_data:
+        character.animation_data.action = walk_action
+    
+    print(f"   ✅ Chemin créé: frames {start_frame} à {end_frame}")
+
+
+def play_animation(character, action_name, start_frame):
+    """Joue une animation à un frame donné"""
+    action = get_action(action_name)
+    if not action:
+        return 0
+    
+    if character.animation_data:
+        character.animation_data.action = action
+    
+    # Durée de l'action
+    duration = int((action.frame_range[1] - action.frame_range[0]) / FPS)
+    print(f"   🎬 {action_name}: {duration}s")
+    
+    return duration
+
+
+def animate_chair(chair, start_frame, duration_frames):
+    """
+    Anime la rotation de la chaise
+    SENS HORAIRE + rebond
+    """
+    print(f"\n🪑 Animation chaise (sens horaire)...")
+    
+    if not chair:
+        return
+    
+    end_frame = start_frame + duration_frames
+    bounce_frame = end_frame + BOUNCE_FRAMES
+    
+    # Position initiale
+    initial_z = chair.rotation_euler[2]
+    
+    # Keyframe avant rotation
+    chair.keyframe_insert(data_path="rotation_euler", frame=start_frame - 1)
+    
+    # Rotation finale (NÉGATIF = horaire)
+    chair.rotation_euler = (
+        chair.rotation_euler[0],
+        chair.rotation_euler[1],
+        initial_z + math.radians(CHAIR_ROTATION)
+    )
+    chair.keyframe_insert(data_path="rotation_euler", frame=end_frame)
+    
+    # REBOND: La chaise dépasse légèrement puis revient
+    over_rotate = math.radians(CHAIR_ROTATION * BOUNCE_AMOUNT)
+    chair.rotation_euler = (
+        chair.rotation_euler[0],
+        chair.rotation_euler[1],
+        initial_z + math.radians(CHAIR_ROTATION) + over_rotate
+    )
+    chair.keyframe_insert(data_path="rotation_euler", frame=end_frame + BOUNCE_FRAMES // 2)
+    
+    # Retour position finale
+    chair.rotation_euler = (
+        chair.rotation_euler[0],
+        chair.rotation_euler[1],
+        initial_z + math.radians(CHAIR_ROTATION)
+    )
+    chair.keyframe_insert(data_path="rotation_euler", frame=bounce_frame)
+    
+    print(f"   ✅ Rotation {CHAIR_ROTATION}° + rebond")
 
 
 def get_audio_duration():
@@ -235,7 +284,7 @@ def setup_timeline(duration):
     bpy.context.scene.frame_start = 1
     bpy.context.scene.frame_end = frames
     bpy.context.scene.render.fps = FPS
-    print(f"\n⏱️ Timeline: {frames} frames ({duration:.1f}s)")
+    print(f"\n⏱️ Timeline: 1 à {frames} frames ({duration:.1f}s)")
     return frames
 
 
@@ -249,41 +298,17 @@ def add_audio():
             if seq.type == 'SOUND':
                 bpy.context.scene.sequence_editor.sequences.remove(seq)
         bpy.context.scene.sequence_editor.sequences.new_sound("Audio", AUDIO_FILE, 1, 1)
-        print(f"   ✅ Audio ajouté")
+        print(f"\n🔊 Audio ajouté")
     except Exception as e:
         print(f"   ⚠️ Erreur audio: {e}")
 
 
-def create_animation(kara_armature, chair, total_frames):
-    if not kara_armature:
-        return
-    
-    print(f"\n🎭 Création animation...")
-    
-    walk_end = int(WALK_DURATION * FPS)
-    sit_end = walk_end + int(SIT_DURATION * FPS)
-    
-    # Animation de position
-    kara_armature.location = KARA_START_POS
-    kara_armature.keyframe_insert(data_path="location", frame=1)
-    kara_armature.location = KARA_END_POS
-    kara_armature.keyframe_insert(data_path="location", frame=walk_end)
-    
-    print(f"   ✅ Animation position")
-    
-    # Rotation chaise
-    if chair:
-        init_z = chair.rotation_euler[2]
-        chair.keyframe_insert(data_path="rotation_euler", frame=sit_end - 1)
-        chair.rotation_euler = (chair.rotation_euler[0], chair.rotation_euler[1], 
-                                init_z + math.radians(CHAIR_ROTATION))
-        chair.keyframe_insert(data_path="rotation_euler", frame=sit_end + int(CHAIR_TURN_TIME * FPS))
-        print(f"   ✅ Rotation chaise {CHAIR_ROTATION}°")
-
-
 def setup_render():
     print(f"\n🎬 Configuration rendu...")
-    os.makedirs(os.path.dirname(OUTPUT_FILE) or ".", exist_ok=True)
+    
+    output_dir = os.path.dirname(OUTPUT_FILE)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     
     bpy.context.scene.render.resolution_x = 1080
     bpy.context.scene.render.resolution_y = 1920
@@ -301,25 +326,71 @@ def setup_render():
         print(f"   Format: PNG")
 
 
+def render():
+    print(f"\n🎨 Rendu en cours...")
+    try:
+        bpy.ops.render.render(animation=True, write_still=True)
+        print(f"   ✅ Terminé!")
+    except Exception as e:
+        print(f"   ❌ Erreur: {e}")
+
+
 def main():
     print("\n" + "=" * 60)
     print("🎬 BLENDER SCRIPT - DÉBUT")
     print("=" * 60)
     
     try:
-        check_files()
-        clear_scene()
-        kara_armature, kara_mesh = import_kara()
+        # Afficher les actions disponibles
+        print(f"\n📋 Actions disponibles:")
+        for action in bpy.data.actions:
+            print(f"   - {action.name}")
+        
+        # Trouver les objets
+        character = find_character()
         chair = find_chair()
+        camera = find_camera()
+        
+        if not character:
+            print("❌ Pas de personnage!")
+            return
+        
+        # Configuration tête suit caméra
+        if camera:
+            setup_head_tracking(character, camera)
+        
+        # Durée totale
         duration = get_audio_duration()
-        frames = setup_timeline(duration)
-        create_animation(kara_armature, chair, frames)
+        total_frames = setup_timeline(duration)
+        
+        # === SÉQUENCE D'ANIMATION ===
+        print(f"\n🎭 Création séquence...")
+        
+        current_frame = 1
+        
+        # 1. MARCHE vers la chaise
+        walk_end = int(WALK_DURATION * FPS)
+        create_walk_path(character, current_frame, walk_end)
+        play_animation(character, ANIM_WALK, current_frame)
+        current_frame = walk_end
+        
+        # 2. S'ASSOIT
+        sit_end = current_frame + int(SIT_DURATION * FPS)
+        play_animation(character, ANIM_SIT, current_frame)
+        current_frame = sit_end
+        
+        # 3. TOURNER CHAISE (avec rebond)
+        chair_frames = int(CHAIR_TURN_DURATION * FPS)
+        animate_chair(chair, current_frame, chair_frames)
+        current_frame += chair_frames + BOUNCE_FRAMES
+        
+        # 4. PARLER (reste du temps)
+        play_animation(character, ANIM_TALK, current_frame)
+        
+        # Audio et rendu
         add_audio()
         setup_render()
-        
-        print(f"\n🎨 Rendu en cours...")
-        bpy.ops.render.render(animation=True, write_still=True)
-        print(f"   ✅ Terminé!")
+        render()
         
     except Exception as e:
         print(f"\n❌ ERREUR: {e}")
