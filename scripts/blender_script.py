@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """
-Blender Script - VERSION FINALE COMPLETE
-Les personnages et animations sont DÉJÀ dans le .blend
+Blender Script - VERSION INTELLIGENTE
+Calcule automatiquement les positions et crée l'animation
 
 Fonctionnalités:
-1. Chemin pour marcher jusqu'à la chaise
-2. Enchaînement des animations (Walk → Sit → Talk)
-3. Rotation chaise sens HORAIRE (aiguilles d'une montre)
-4. Easing/balancement pour transitions fluides
-5. Tête suit la caméra
+1. Détecte la position de la chaise
+2. Calcule la position de départ du personnage (hors champ)
+3. Crée le chemin automatiquement
+4. Gère arrivée gauche/droite
+5. Rotation chaise adaptative
+6. Tête suit la caméra
 """
 
 import bpy
 import os
 import sys
 import math
+import random
 from math import pi
 
 # ============================================================
@@ -25,62 +27,66 @@ _audio_file_from_env = os.environ.get("JT_AUDIO_FILE", "")
 _output_file_from_env = os.environ.get("JT_OUTPUT_FILE", "")
 
 blend_dir = os.path.dirname(bpy.data.filepath) if bpy.data.filepath else os.getcwd()
-print(f"📁 Dossier du .blend: {blend_dir}")
+print(f"📁 Dossier: {blend_dir}")
 
 AUDIO_FILE = _audio_file_from_env if _audio_file_from_env else os.path.join(blend_dir, "data", "audio.mp3")
 OUTPUT_FILE = _output_file_from_env if _output_file_from_env else os.path.join(blend_dir, "renders", "jt_output.mp4")
 
 FPS = 30
 
-# Noms des animations (à ajuster selon tes noms exacts)
-ANIM_WALK = "F Walking Arc Left"      # Marche
-ANIM_SIT = "F Stand To Sit"           # S'assoit
-ANIM_TALK = "F Sitting Talking"       # Parle assis
-ANIM_IDLE = "F attendre"              # Attente
+# Noms des animations (ajuster selon tes noms)
+ANIM_WALK = "F Walking Arc Left"
+ANIM_SIT = "F Stand To Sit"
+ANIM_TALK = "F Sitting Talking"
+ANIM_IDLE = "F attendre"
 
-# Durées (en secondes)
+# Durées
 WALK_DURATION = 3.0
 SIT_DURATION = 2.5
 CHAIR_TURN_DURATION = 1.0
 
-# Rotation chaise (NÉGATIF = sens HORAIRE)
-CHAIR_ROTATION = -140  # degrés
+# Distance hors champ (en unités Blender)
+OFFSCREEN_DISTANCE = 1500  # mm derrière/de côté
 
-# Distance de marche (en unités Blender, probablement mm)
-WALK_DISTANCE = 800
+# Mode arrivée: "left", "right", "random"
+ARRIVAL_MODE = "random"
 
-# Balancement (easing)
-BOUNCE_AMOUNT = 0.15   # Intensité du rebond (0.1 = 10%)
-BOUNCE_FRAMES = 15     # Durée du rebond en frames
+# Rotation chaise base
+CHAIR_ROTATION_BASE = -140  # degrés (négatif = horaire)
+
+# Balancement
+BOUNCE_AMOUNT = 0.15
+BOUNCE_FRAMES = 15
 
 print("=" * 60)
-print("🎬 BLENDER SCRIPT - VERSION FINALE")
+print("🎬 BLENDER SCRIPT - VERSION INTELLIGENTE")
 print("=" * 60)
 
 
-def find_character():
-    """Trouve le personnage principal (armature)"""
-    print(f"\n🔍 Recherche du personnage...")
+def find_all_characters():
+    """Trouve tous les personnages (armatures)"""
+    print(f"\n🔍 Recherche des personnages...")
     
+    characters = []
     for obj in bpy.context.scene.objects:
-        if obj.type == 'ARMATURE':
-            if len(obj.pose.bones) > 10:
-                print(f"   ✅ Trouvé: {obj.name}")
-                print(f"      📍 Location: {tuple(round(l, 2) for l in obj.location)}")
-                return obj
+        if obj.type == 'ARMATURE' and len(obj.pose.bones) > 10:
+            characters.append(obj)
+            print(f"   ✅ {obj.name}")
+            print(f"      📍 Position: {tuple(round(v, 2) for v in obj.location)}")
     
-    print(f"   ❌ Aucun personnage trouvé")
-    return None
+    return characters
 
 
 def find_chair():
-    """Trouve la chaise"""
+    """Trouve la chaise et sa position"""
     print(f"\n🪑 Recherche chaise...")
     
     for obj in bpy.context.scene.objects:
         name_lower = obj.name.lower()
         if any(kw in name_lower for kw in ["chaise", "chair", "seat", "fauteuil"]):
             print(f"   ✅ Trouvée: {obj.name}")
+            print(f"      📍 Position: {tuple(round(v, 2) for v in obj.location)}")
+            print(f"      📐 Rotation Z: {math.degrees(obj.rotation_euler[2]):.1f}°")
             return obj
     
     print(f"   ⚠️ Non trouvée")
@@ -91,51 +97,115 @@ def find_camera():
     """Trouve la caméra active"""
     cam = bpy.context.scene.camera
     if cam:
-        print(f"\n📹 Caméra: {cam.name}")
+        print(f"\n📹 Caméra active: {cam.name}")
+        print(f"      📍 Position: {tuple(round(v, 2) for v in cam.location)}")
         return cam
     
     for obj in bpy.context.scene.objects:
         if obj.type == 'CAMERA':
             bpy.context.scene.camera = obj
-            print(f"\n📹 Caméra trouvée: {obj.name}")
+            print(f"\n📹 Caméra: {obj.name}")
             return obj
     
     return None
 
 
+def calculate_scene_positions(chair, camera, arrival="random"):
+    """
+    Calcule toutes les positions nécessaires pour l'animation
+    Retourne: dict avec start_pos, end_pos, chair_rotation
+    """
+    print(f"\n📐 Calcul des positions...")
+    
+    if not chair:
+        print("   ❌ Pas de chaise pour calculer")
+        return None
+    
+    # Position de la chaise
+    chair_pos = chair.location.copy()
+    chair_rot = chair.rotation_euler[2]
+    
+    print(f"   🪑 Chaise position: {chair_pos}")
+    print(f"   🪑 Chaise rotation: {math.degrees(chair_rot):.1f}°")
+    
+    # Déterminer le côté d'arrivée
+    if arrival == "random":
+        arrival = random.choice(["left", "right"])
+    
+    print(f"   🚶 Arrivée: {arrival}")
+    
+    # Calculer la position de départ (hors champ, sur le côté)
+    start_pos = chair_pos.copy()
+    
+    if arrival == "left":
+        # Arriver par la gauche
+        start_pos[0] -= OFFSCREEN_DISTANCE  # X négatif = gauche
+        chair_rotation = CHAIR_ROTATION_BASE  # Rotation standard
+    else:
+        # Arriver par la droite
+        start_pos[0] += OFFSCREEN_DISTANCE  # X positif = droite
+        chair_rotation = -CHAIR_ROTATION_BASE  # Rotation inversée
+    
+    # Position finale = devant la chaise (légèrement devant)
+    end_pos = chair_pos.copy()
+    end_pos[1] += 200  # Un peu devant la chaise
+    
+    # Calculer la distance à parcourir
+    distance = math.sqrt(
+        (end_pos[0] - start_pos[0])**2 + 
+        (end_pos[1] - start_pos[1])**2
+    )
+    
+    print(f"   📍 Départ: {tuple(round(v, 1) for v in start_pos)}")
+    print(f"   📍 Arrivée: {tuple(round(v, 1) for v in end_pos)}")
+    print(f"   📏 Distance: {distance:.0f}")
+    print(f"   🔄 Rotation chaise: {chair_rotation}°")
+    
+    return {
+        "start_pos": start_pos,
+        "end_pos": end_pos,
+        "chair_rotation": chair_rotation,
+        "arrival": arrival,
+        "distance": distance
+    }
+
+
+def position_character(character, start_pos):
+    """Place le personnage à sa position de départ"""
+    print(f"\n👤 Positionnement de {character.name}...")
+    
+    character.location = start_pos
+    print(f"   ✅ Positionné à: {tuple(round(v, 1) for v in start_pos)}")
+
+
 def get_action(name):
-    """Récupère une action par son nom (recherche flexible)"""
-    # Recherche exacte
+    """Récupère une action par son nom (flexible)"""
     if name in bpy.data.actions:
         return bpy.data.actions[name]
     
-    # Recherche partielle
     for action in bpy.data.actions:
         if name.lower() in action.name.lower():
-            print(f"   ✅ Action trouvée: {action.name}")
             return action
     
-    print(f"   ⚠️ Action non trouvée: {name}")
     return None
 
 
 def setup_head_tracking(character, camera):
     """La tête suit la caméra"""
-    print(f"\n👀 Configuration suivi de tête...")
-    
     if not character or not camera:
         return
     
-    # Trouver la bone de la tête
+    print(f"\n👀 Configuration tête...")
+    
     head_bone = None
     for bone in character.pose.bones:
         name_lower = bone.name.lower()
-        if any(kw in name_lower for kw in ["head", "tête", "tete", "neck"]):
+        if any(kw in name_lower for kw in ["head", "tête", "tete"]):
             head_bone = bone
             break
     
     if not head_bone:
-        print(f"   ⚠️ Bone tête non trouvée")
+        print("   ⚠️ Bone tête non trouvée")
         return
     
     # Supprimer ancien constraint
@@ -143,55 +213,19 @@ def setup_head_tracking(character, camera):
         if c.type == 'TRACK_TO':
             head_bone.constraints.remove(c)
     
-    # Ajouter Track To
     track = head_bone.constraints.new('TRACK_TO')
     track.target = camera
     track.track_axis = 'TRACK_NEGATIVE_Z'
     track.up_axis = 'UP_Y'
     
-    print(f"   ✅ Tête suit la caméra (bone: {head_bone.name})")
+    print(f"   ✅ Tête suit caméra")
 
 
-def apply_easing(fcurves, start_frame, end_frame, bounce=True):
-    """
-    Applique un easing avec rebond sur les keyframes
-    Pour que ça s'arrête pas net
-    """
-    if not bounce or not fcurves:
-        return
+def create_walk_animation(character, start_pos, end_pos, start_frame, end_frame):
+    """Crée l'animation de marche avec position"""
+    print(f"\n🚶 Animation marche...")
     
-    for fcurve in fcurves:
-        keyframes = [k for k in fcurve.keyframe_points if start_frame <= k.co[0] <= end_frame]
-        
-        for k in keyframes:
-            # Interpolation bézier pour plus fluide
-            k.interpolation = 'BEZIER'
-            
-            # Ajouter du rebond sur les keyframes de fin
-            if k.co[0] == end_frame:
-                # Handles pour effet de rebond léger
-                k.handle_left_type = 'AUTO'
-                k.handle_right_type = 'AUTO'
-
-
-def create_walk_path(character, start_frame, end_frame):
-    """
-    Crée un chemin de marche avec mouvement naturel
-    Le personnage avance vers la chaise
-    """
-    print(f"\n🚶 Création chemin de marche...")
-    
-    if not character:
-        return
-    
-    # Position de départ
-    start_pos = character.location.copy()
-    
-    # Position d'arrivée (devant la chaise)
-    end_pos = start_pos.copy()
-    end_pos[1] += WALK_DISTANCE  # Avancer sur Y
-    
-    # Créer les keyframes de position
+    # Animation de position
     character.location = start_pos
     character.keyframe_insert(data_path="location", frame=start_frame)
     
@@ -202,32 +236,16 @@ def create_walk_path(character, start_frame, end_frame):
     walk_action = get_action(ANIM_WALK)
     if walk_action and character.animation_data:
         character.animation_data.action = walk_action
+        print(f"   ✅ Action: {walk_action.name}")
     
-    print(f"   ✅ Chemin créé: frames {start_frame} à {end_frame}")
+    print(f"   ✅ Frames {start_frame} à {end_frame}")
 
 
-def play_animation(character, action_name, start_frame):
-    """Joue une animation à un frame donné"""
-    action = get_action(action_name)
-    if not action:
-        return 0
-    
-    if character.animation_data:
-        character.animation_data.action = action
-    
-    # Durée de l'action
-    duration = int((action.frame_range[1] - action.frame_range[0]) / FPS)
-    print(f"   🎬 {action_name}: {duration}s")
-    
-    return duration
-
-
-def animate_chair(chair, start_frame, duration_frames):
+def animate_chair_smart(chair, rotation_deg, start_frame, duration_frames):
     """
-    Anime la rotation de la chaise
-    SENS HORAIRE + rebond
+    Anime la chaise avec rotation adaptative
     """
-    print(f"\n🪑 Animation chaise (sens horaire)...")
+    print(f"\n🪑 Animation chaise...")
     
     if not chair:
         return
@@ -235,38 +253,47 @@ def animate_chair(chair, start_frame, duration_frames):
     end_frame = start_frame + duration_frames
     bounce_frame = end_frame + BOUNCE_FRAMES
     
-    # Position initiale
     initial_z = chair.rotation_euler[2]
     
-    # Keyframe avant rotation
+    # Keyframe initial
     chair.keyframe_insert(data_path="rotation_euler", frame=start_frame - 1)
     
-    # Rotation finale (NÉGATIF = horaire)
+    # Rotation finale
     chair.rotation_euler = (
         chair.rotation_euler[0],
         chair.rotation_euler[1],
-        initial_z + math.radians(CHAIR_ROTATION)
+        initial_z + math.radians(rotation_deg)
     )
     chair.keyframe_insert(data_path="rotation_euler", frame=end_frame)
     
-    # REBOND: La chaise dépasse légèrement puis revient
-    over_rotate = math.radians(CHAIR_ROTATION * BOUNCE_AMOUNT)
+    # Rebond
+    over_rotate = math.radians(rotation_deg * BOUNCE_AMOUNT)
     chair.rotation_euler = (
         chair.rotation_euler[0],
         chair.rotation_euler[1],
-        initial_z + math.radians(CHAIR_ROTATION) + over_rotate
+        initial_z + math.radians(rotation_deg) + over_rotate
     )
     chair.keyframe_insert(data_path="rotation_euler", frame=end_frame + BOUNCE_FRAMES // 2)
     
-    # Retour position finale
+    # Retour
     chair.rotation_euler = (
         chair.rotation_euler[0],
         chair.rotation_euler[1],
-        initial_z + math.radians(CHAIR_ROTATION)
+        initial_z + math.radians(rotation_deg)
     )
     chair.keyframe_insert(data_path="rotation_euler", frame=bounce_frame)
     
-    print(f"   ✅ Rotation {CHAIR_ROTATION}° + rebond")
+    print(f"   ✅ Rotation: {rotation_deg}° + rebond")
+
+
+def play_action(character, action_name, frame):
+    """Joue une action"""
+    action = get_action(action_name)
+    if action and character.animation_data:
+        character.animation_data.action = action
+        print(f"   🎬 {action_name}")
+        return int((action.frame_range[1] - action.frame_range[0]) / FPS)
+    return 0
 
 
 def get_audio_duration():
@@ -284,7 +311,7 @@ def setup_timeline(duration):
     bpy.context.scene.frame_start = 1
     bpy.context.scene.frame_end = frames
     bpy.context.scene.render.fps = FPS
-    print(f"\n⏱️ Timeline: 1 à {frames} frames ({duration:.1f}s)")
+    print(f"\n⏱️ Timeline: {frames} frames ({duration:.1f}s)")
     return frames
 
 
@@ -300,15 +327,13 @@ def add_audio():
         bpy.context.scene.sequence_editor.sequences.new_sound("Audio", AUDIO_FILE, 1, 1)
         print(f"\n🔊 Audio ajouté")
     except Exception as e:
-        print(f"   ⚠️ Erreur audio: {e}")
+        print(f"   ⚠️ Erreur: {e}")
 
 
 def setup_render():
-    print(f"\n🎬 Configuration rendu...")
+    print(f"\n🎬 Rendu...")
     
-    output_dir = os.path.dirname(OUTPUT_FILE)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(OUTPUT_FILE) or ".", exist_ok=True)
     
     bpy.context.scene.render.resolution_x = 1080
     bpy.context.scene.render.resolution_y = 1920
@@ -335,62 +360,105 @@ def render():
         print(f"   ❌ Erreur: {e}")
 
 
+def hide_other_characters(characters, selected):
+    """Cache les autres personnages"""
+    for char in characters:
+        if char != selected:
+            char.hide_render = True
+            char.hide_viewport = True
+
+
 def main():
     print("\n" + "=" * 60)
-    print("🎬 BLENDER SCRIPT - DÉBUT")
+    print("🎬 SCRIPT INTELLIGENT - DÉBUT")
     print("=" * 60)
     
     try:
-        # Afficher les actions disponibles
+        # Lister les actions
         print(f"\n📋 Actions disponibles:")
         for action in bpy.data.actions:
             print(f"   - {action.name}")
         
-        # Trouver les objets
-        character = find_character()
+        # Trouver les éléments
+        characters = find_all_characters()
         chair = find_chair()
         camera = find_camera()
         
-        if not character:
-            print("❌ Pas de personnage!")
+        if not characters:
+            print("❌ Aucun personnage!")
             return
         
-        # Configuration tête suit caméra
+        if not chair:
+            print("❌ Pas de chaise!")
+            return
+        
+        # Sélectionner le premier personnage
+        character = characters[0]
+        print(f"\n👤 Personnage sélectionné: {character.name}")
+        
+        # Cacher les autres
+        hide_other_characters(characters, character)
+        
+        # Calculer les positions automatiquement
+        positions = calculate_scene_positions(chair, camera, ARRIVAL_MODE)
+        
+        if not positions:
+            print("❌ Impossible de calculer les positions!")
+            return
+        
+        # Positionner le personnage au départ
+        position_character(character, positions["start_pos"])
+        
+        # Configurer la tête
         if camera:
             setup_head_tracking(character, camera)
         
-        # Durée totale
+        # Durée
         duration = get_audio_duration()
         total_frames = setup_timeline(duration)
         
-        # === SÉQUENCE D'ANIMATION ===
+        # === SÉQUENCE ===
         print(f"\n🎭 Création séquence...")
         
         current_frame = 1
         
-        # 1. MARCHE vers la chaise
-        walk_end = int(WALK_DURATION * FPS)
-        create_walk_path(character, current_frame, walk_end)
-        play_animation(character, ANIM_WALK, current_frame)
+        # 1. MARCHE
+        walk_end = current_frame + int(WALK_DURATION * FPS)
+        create_walk_animation(
+            character, 
+            positions["start_pos"],
+            positions["end_pos"],
+            current_frame,
+            walk_end
+        )
         current_frame = walk_end
         
         # 2. S'ASSOIT
         sit_end = current_frame + int(SIT_DURATION * FPS)
-        play_animation(character, ANIM_SIT, current_frame)
+        play_action(character, ANIM_SIT, current_frame)
         current_frame = sit_end
         
-        # 3. TOURNER CHAISE (avec rebond)
+        # 3. ROTATION CHAISE
         chair_frames = int(CHAIR_TURN_DURATION * FPS)
-        animate_chair(chair, current_frame, chair_frames)
+        animate_chair_smart(
+            chair, 
+            positions["chair_rotation"],
+            current_frame,
+            chair_frames
+        )
         current_frame += chair_frames + BOUNCE_FRAMES
         
-        # 4. PARLER (reste du temps)
-        play_animation(character, ANIM_TALK, current_frame)
+        # 4. PARLER
+        play_action(character, ANIM_TALK, current_frame)
         
         # Audio et rendu
         add_audio()
         setup_render()
         render()
+        
+        print(f"\n✅ Animation terminée!")
+        print(f"   Arrivée: {positions['arrival']}")
+        print(f"   Distance parcourue: {positions['distance']:.0f}")
         
     except Exception as e:
         print(f"\n❌ ERREUR: {e}")
